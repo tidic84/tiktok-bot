@@ -91,39 +91,50 @@ class VideoProcessor:
     
     def _generate_filters(self) -> str:
         """
-        Générer une chaîne de filtres FFmpeg aléatoires mais subtils
+        Générer une chaîne de filtres FFmpeg - VERSION AGRESSIVE pour bypass TikTok
         
         Returns:
             Chaîne de filtres FFmpeg
         """
         filters = []
         
-        # 1. Modification de vitesse (très subtile: 98-102%)
-        speed = random.uniform(0.98, 1.02)
+        # 1. Modification de vitesse (PLUS AGRESSIVE: 95-105%)
+        speed = random.uniform(0.95, 1.05)
         filters.append(f"setpts={1/speed:.4f}*PTS")
         
-        # 2. Ajustement luminosité/contraste (subtil)
-        brightness = random.uniform(-0.05, 0.05)  # -5% à +5%
-        contrast = random.uniform(0.98, 1.02)      # 98% à 102%
+        # 2. Ajustement luminosité/contraste (PLUS MARQUÉ)
+        brightness = random.uniform(-0.10, 0.10)  # -10% à +10%
+        contrast = random.uniform(0.95, 1.08)     # 95% à 108%
         filters.append(f"eq=brightness={brightness:.3f}:contrast={contrast:.3f}")
         
-        # 3. Crop/zoom très léger (1-3%)
-        crop_percent = random.uniform(1, 3)
+        # 3. Crop/zoom plus important (3-7%)
+        crop_percent = random.uniform(3, 7)
         filters.append(f"crop=iw*{(100-crop_percent)/100:.4f}:ih*{(100-crop_percent)/100:.4f}")
         filters.append("scale=720:1280")  # Rescale à la taille TikTok
         
-        # 4. Rotation minime (0.5-1.5°) - optionnel
-        if random.random() > 0.5:  # 50% de chance
-            angle = random.uniform(0.5, 1.5) * random.choice([-1, 1])
-            filters.append(f"rotate={angle}*PI/180:fillcolor=black")
+        # 4. Rotation TOUJOURS appliquée (1-2.5°)
+        angle = random.uniform(1.0, 2.5) * random.choice([-1, 1])
+        filters.append(f"rotate={angle}*PI/180:fillcolor=black")
         
-        # 5. Miroir horizontal (20% de chance)
-        if random.random() > 0.8:
+        # 5. Miroir horizontal (40% de chance - AUGMENTÉ)
+        if random.random() > 0.6:
             filters.append("hflip")
         
-        # 6. Saturation (subtile: 95-105%)
-        saturation = random.uniform(0.95, 1.05)
+        # 6. Saturation (PLUS VARIABLE: 90-110%)
+        saturation = random.uniform(0.90, 1.10)
         filters.append(f"eq=saturation={saturation:.3f}")
+        
+        # 7. NOUVEAU: Ajout de bruit léger (imperceptible mais change signature)
+        noise_level = random.randint(1, 3)
+        filters.append(f"noise=alls={noise_level}:allf=t")
+        
+        # 8. NOUVEAU: Gamma correction aléatoire
+        gamma = random.uniform(0.95, 1.05)
+        filters.append(f"eq=gamma={gamma:.3f}")
+        
+        # 9. NOUVEAU: Légère modification de teinte (hue)
+        hue = random.uniform(-0.05, 0.05)
+        filters.append(f"hue=h={hue:.3f}")
         
         # Combiner tous les filtres
         return ",".join(filters)

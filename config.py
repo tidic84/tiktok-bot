@@ -47,8 +47,8 @@ class Config:
     
     # Traitement vidéo (pour éviter détection de contenu dupliqué)
     PROCESS_VIDEOS = True  # Modifier les vidéos avant upload
-    ADD_WATERMARK = False  # Ajouter un watermark discret
-    WATERMARK_TEXT = "@YourHandle"  # Texte du watermark
+    ADD_WATERMARK = True   # Ajouter un watermark discret (ACTIVÉ pour plus d'unicité)
+    WATERMARK_TEXT = "🔥"  # Emoji discret (changez si vous voulez)
     
     @classmethod
     def create_folders(cls):

@@ -133,6 +133,17 @@ class TikTokBot:
                     if processed_path:
                         logger.info(f"✓ Vidéo traitée et rendue unique")
                         video_path = processed_path
+                        
+                        # Ajouter watermark si activé
+                        if self.config.ADD_WATERMARK:
+                            logger.info(f"Ajout du watermark...")
+                            watermarked_path = self.processor.add_watermark(
+                                video_path, 
+                                self.config.WATERMARK_TEXT
+                            )
+                            if watermarked_path:
+                                logger.info(f"✓ Watermark ajouté")
+                                video_path = watermarked_path
                     else:
                         logger.warning(f"⊗ Échec traitement, utilisation de l'original")
                 
