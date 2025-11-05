@@ -9,12 +9,14 @@ from datetime import datetime
 
 from config import Config
 from scraper.tiktok_scraper import TikTokScraper
+from scraper.url_scraper import URLScraper
 from scraper.video_filter import VideoFilter
 from downloader.video_downloader import VideoDownloader
 from processor.video_processor import VideoProcessor  # Traitement vidéo
 # NOTE: SeleniumUploader sera importé SEULEMENT quand nécessaire pour éviter les conflits avec Playwright
 from database.db_manager import DatabaseManager
 from utils.rate_limiter import RateLimiter
+from utils.video_cleaner import VideoCleaner  # Nettoyage automatique
 
 
 # Configuration du logging
@@ -48,6 +50,7 @@ class TikTokBot:
         
         # Initialiser les composants
         self.scraper = TikTokScraper(self.config)
+        self.url_scraper = URLScraper(self.config)  # Scraper alternatif plus fiable
         self.filter = VideoFilter(self.config)
         self.downloader = VideoDownloader(self.config)
         self.processor = VideoProcessor(self.config)  # Traitement vidéo
@@ -55,6 +58,7 @@ class TikTokBot:
         self.uploader = None
         self.db = DatabaseManager(self.config.DATABASE_URL)
         self.rate_limiter = RateLimiter(self.config)
+        self.cleaner = VideoCleaner(self.config)  # Nettoyeur de vidéos
         
         logger.info("=" * 60)
         logger.info("TikTok Bot initialisé")
@@ -66,6 +70,9 @@ class TikTokBot:
             logger.info("\n" + "=" * 60)
             logger.info("DÉBUT DU CYCLE DE TRAITEMENT")
             logger.info("=" * 60)
+            
+            # Nettoyer les fichiers temporaires
+            self.cleaner.cleanup_temp_files()
             
             # Vérifier si on est dans les heures actives
             if not self.rate_limiter.is_active_hours():
@@ -81,12 +88,30 @@ class TikTokBot:
             
             remaining_slots = self.config.MAX_VIDEOS_PER_DAY - uploaded_today
             
-            # 1. Récupérer les vidéos (SEULEMENT trending, quantité réduite)
+            # 1. Récupérer les vidéos selon le mode configuré
             logger.info("\n--- Phase 1: Récupération des vidéos ---")
+            logger.info(f"Mode de scraping: {self.config.SCRAPING_MODE.upper()}")
             
-            # Utiliser immédiatement la session (pas de délai)
-            # TikTok bloque si on attend trop entre init() et utilisation
-            all_videos = await self.scraper.get_trending_videos(self.config.TRENDING_VIDEOS_COUNT)
+            if self.config.SCRAPING_MODE == 'search':
+                # Recherche par mots-clés avec yt-dlp (RECOMMANDÉ)
+                logger.info(f"🔍 Recherche par mots-clés: {', '.join(self.config.TARGET_KEYWORDS)}")
+                all_videos = self.url_scraper.get_videos_from_search(
+                    self.config.TARGET_KEYWORDS,
+                    self.config.VIDEOS_PER_KEYWORD
+                )
+            elif self.config.SCRAPING_MODE == 'creators':
+                # Utiliser le scraper URL pour récupérer depuis des créateurs
+                logger.info(f"🔍 Récupération depuis les créateurs: {', '.join(self.config.TARGET_CREATORS)}")
+                all_videos = self.url_scraper.get_videos_from_creators(
+                    self.config.TARGET_CREATORS,
+                    self.config.VIDEOS_PER_CREATOR
+                )
+            else:
+                # Utiliser l'API TikTok (peut être bloqué)
+                logger.info(f"🔍 Recherche API dans les hashtags: {', '.join(self.config.TARGET_HASHTAGS)}")
+                # Utiliser immédiatement la session (pas de délai)
+                # TikTok bloque si on attend trop entre init() et utilisation
+                all_videos = await self.scraper.get_videos_by_hashtags()
             
             if not all_videos:
                 logger.warning("Aucune vidéo récupérée")
@@ -170,16 +195,22 @@ class TikTokBot:
                     self.uploader_ready = True
                     logger.info("✓ Selenium prêt pour les uploads")
                 
-                # Préparer la description
-                description = video.get('desc', '')[:100]  # Limiter la longueur
-                hashtags = ['#viral', '#fyp', '#trending', '#foryou']
+                # Utiliser la description ORIGINALE de la vidéo TikTok
+                original_description = video.get('desc', '')  # Description complète originale
                 
-                # Upload sur TikTok
+                # Ajouter des hashtags configurés + génériques pour augmenter la visibilité
+                hashtags_to_add = self.config.TARGET_HASHTAGS + ['#fyp', '#viral', '#pourtoi', '#foryou']
+                
+                logger.info(f"📝 Description originale: {original_description[:80]}...")
+                logger.info(f"🏷️  Hashtags ajoutés: {' '.join(hashtags_to_add)}")
+                
+                # Upload sur TikTok avec la description originale + hashtags
                 logger.info(f"Upload de la vidéo {video['id']}...")
                 upload_success = self.uploader.upload_video(
                     video_path=video_path,
-                    description=description,
-                    hashtags=hashtags
+                    title="",  # Pas de titre séparé
+                    description=original_description,  # Description ORIGINALE
+                    hashtags=hashtags_to_add  # Hashtags pour visibilité
                 )
                 
                 if upload_success:
@@ -226,6 +257,20 @@ class TikTokBot:
             
             logger.info("✓ Bot prêt")
             
+            # Nettoyage au démarrage si activé
+            if self.config.CLEANUP_ON_STARTUP:
+                logger.info("\n🧹 Nettoyage automatique au démarrage...")
+                stats = self.cleaner.get_folder_stats()
+                logger.info(
+                    f"📊 Dossier vidéos: {stats['count']} fichier(s), "
+                    f"{stats['total_size_mb']:.2f} MB"
+                )
+                
+                files_deleted, space_freed = self.cleaner.cleanup_old_videos()
+                
+                if files_deleted > 0:
+                    logger.info(f"✓ {files_deleted} vidéo(s) supprimée(s), {space_freed:.2f} MB libérés")
+            
             # Boucle principale
             cycle_count = 0
             while True:
@@ -235,16 +280,23 @@ class TikTokBot:
                 logger.info(f"{'='*60}")
                 
                 try:
-                    # Initialiser le scraper JUSTE AVANT de l'utiliser
-                    logger.info("Initialisation du scraper...")
-                    await self.scraper.initialize()
+                    # Nettoyage périodique toutes les 10 cycles
+                    if cycle_count % 10 == 0 and self.config.AUTO_CLEANUP_VIDEOS:
+                        logger.info("\n🧹 Nettoyage périodique...")
+                        self.cleaner.cleanup_old_videos()
+                    
+                    # Initialiser le scraper seulement si mode API
+                    if self.config.SCRAPING_MODE == 'api':
+                        logger.info("Initialisation du scraper API...")
+                        await self.scraper.initialize()
                     
                     # Traiter les vidéos IMMÉDIATEMENT
                     await self.process_videos()
                     
-                    # Fermer IMMÉDIATEMENT après utilisation
-                    await self.scraper.close()
-                    logger.info("✓ Scraper fermé")
+                    # Fermer IMMÉDIATEMENT après utilisation (si mode API)
+                    if self.config.SCRAPING_MODE == 'api':
+                        await self.scraper.close()
+                        logger.info("✓ Scraper fermé")
                     
                 except Exception as e:
                     logger.error(f"Erreur durant le cycle {cycle_count}: {e}", exc_info=True)
@@ -292,11 +344,19 @@ def main():
     logger.info("BOT TIKTOK - RÉCUPÉRATION ET REPUBLICATION")
     logger.info("=" * 60)
     logger.info(f"Configuration:")
+    logger.info(f"  - Mode de scraping: {config.SCRAPING_MODE.upper()}")
+    if config.SCRAPING_MODE == 'search':
+        logger.info(f"  - Mots-clés de recherche: {', '.join(config.TARGET_KEYWORDS)}")
+        logger.info(f"  - Vidéos par mot-clé: {config.VIDEOS_PER_KEYWORD}")
+    elif config.SCRAPING_MODE == 'creators':
+        logger.info(f"  - Créateurs suivis: {', '.join(config.TARGET_CREATORS)}")
+        logger.info(f"  - Vidéos par créateur: {config.VIDEOS_PER_CREATOR}")
+    else:
+        logger.info(f"  - Hashtags API: {', '.join(config.TARGET_HASHTAGS)}")
     logger.info(f"  - Likes minimum: {config.MIN_LIKES:,}")
     logger.info(f"  - Vues minimum: {config.MIN_VIEWS:,}")
     logger.info(f"  - Taux engagement minimum: {config.MIN_ENGAGEMENT_RATE:.1%}")
     logger.info(f"  - Max vidéos/jour: {config.MAX_VIDEOS_PER_DAY}")
-    logger.info(f"  - Hashtags ciblés: {', '.join(config.TARGET_HASHTAGS)}")
     logger.info(f"  - Heures actives: {config.ACTIVE_HOURS_START}h-{config.ACTIVE_HOURS_END}h")
     logger.info("=" * 60)
     

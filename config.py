@@ -17,13 +17,45 @@ class Config:
     MIN_VIEWS = 50000  # Réduit de 100000
     MIN_ENGAGEMENT_RATE = 0.03  # 3% (réduit de 5%)
     
-    # Hashtags ciblés pour la recherche
-    TARGET_HASHTAGS = ['#viral', '#fyp', '#trending', '#foryou', '#tiktok']
+    # Mots-clés/hashtags ciblés pour la recherche (utilisé si SCRAPING_MODE = 'search' ou 'api')
+    # Peut être des hashtags (avec ou sans #) ou des mots-clés simples
+    # Exemples: ['recipes', 'food', 'cooking'] ou ['#Recipes', '#Foodtok']
+    TARGET_KEYWORDS = ['recipes', 'food cooking', 'easy recipes']
+    
+    # Nombre de vidéos à récupérer par mot-clé (mode 'search')
+    VIDEOS_PER_KEYWORD = 10
+    
+    # MODE DE SCRAPING: 'api', 'creators' ou 'search'
+    # 'api' = utilise l'API TikTok (peut être bloqué)
+    # 'creators' = récupère des vidéos de créateurs spécifiques (RECOMMANDÉ - fonctionne bien!)
+    # 'search' = recherche par mots-clés/hashtags avec yt-dlp (EXPÉRIMENTAL - peut ne pas fonctionner)
+    SCRAPING_MODE = 'creators'
+    
+    # Créateurs TikTok à suivre (utilisé si SCRAPING_MODE = 'creators')
+    # Trouvez des créateurs populaires dans votre niche
+    # Exemples pour food/recipes:
+    TARGET_CREATORS = [
+        'aflavorfulbite',  # Gordon Ramsay - chef célèbre
+        'joandbart',          # Recettes simples et rapides
+        'feelgoodfoodie',         # Recettes healthy
+        'cookingwithshereen',     # Recettes moyen-orientales
+        'freshfitfood_',
+        'malcomsfood2'                # Recettes virales
+    ]
+    
+    # Nombre de vidéos à récupérer par créateur (mode 'creators')
+    VIDEOS_PER_CREATOR = 10
+    
+    # COMPATIBILITÉ: Alias pour TARGET_KEYWORDS
+    @property
+    def TARGET_HASHTAGS(self):
+        """Alias pour TARGET_KEYWORDS (compatibilité)"""
+        return self.TARGET_KEYWORDS
     
     # Limites et délais
-    MAX_VIDEOS_PER_DAY = 20
-    MIN_DELAY_BETWEEN_UPLOADS = 300  # 5 minutes en secondes
-    MAX_DELAY_BETWEEN_UPLOADS = 900  # 15 minutes en secondes
+    MAX_VIDEOS_PER_DAY = 10
+    MIN_DELAY_BETWEEN_UPLOADS = 3600  # 1 heure en secondes
+    MAX_DELAY_BETWEEN_UPLOADS = 7200  # 2 heures en secondes
     CHECK_INTERVAL = 7200  # 2 heures entre chaque cycle (TikTok rate limiting)
     
     # Heures d'activité (pour paraître humain)
@@ -49,6 +81,11 @@ class Config:
     PROCESS_VIDEOS = True  # Modifier les vidéos avant upload
     ADD_WATERMARK = True   # Ajouter un watermark discret (ACTIVÉ pour plus d'unicité)
     WATERMARK_TEXT = "🔥"  # Emoji discret (changez si vous voulez)
+    
+    # Nettoyage automatique des vieilles vidéos
+    AUTO_CLEANUP_VIDEOS = True  # Supprimer automatiquement les vieilles vidéos
+    KEEP_VIDEOS_DAYS = 0.03  # Conserver les vidéos pendant 0.03 jours (environ 0.72 heures)
+    CLEANUP_ON_STARTUP = True  # Nettoyer au démarrage du bot
     
     @classmethod
     def create_folders(cls):

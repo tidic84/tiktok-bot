@@ -162,21 +162,59 @@ class SeleniumUploader:
     
     def _is_logged_in(self) -> bool:
         """
-        Vérifier si on est connecté
+        Vérifier si on est connecté (AMÉLIORÉ - multiples vérifications)
         
         Returns:
             True si connecté
         """
         try:
-            # Chercher un élément qui n'existe que quand on est connecté
-            self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='upload-icon']")
-            return True
-        except NoSuchElementException:
+            # Stratégie 1: Chercher l'icône d'upload
+            try:
+                self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='upload-icon']")
+                logger.debug("✓ Connexion détectée via upload-icon")
+                return True
+            except NoSuchElementException:
+                pass
+            
+            # Stratégie 2: Chercher le bouton d'upload dans la barre
+            try:
+                self.driver.find_element(By.XPATH, "//a[contains(@href, '/upload')]")
+                logger.debug("✓ Connexion détectée via lien upload")
+                return True
+            except NoSuchElementException:
+                pass
+            
+            # Stratégie 3: Vérifier si on est sur la page d'upload
+            if '/upload' in self.driver.current_url:
+                logger.debug("✓ Connexion détectée via URL /upload")
+                return True
+            
+            # Stratégie 4: Chercher un élément de profil connecté
+            try:
+                self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='profile-icon']")
+                logger.debug("✓ Connexion détectée via profile-icon")
+                return True
+            except NoSuchElementException:
+                pass
+            
+            # Stratégie 5: Vérifier les cookies de session
+            cookies = self.driver.get_cookies()
+            for cookie in cookies:
+                if cookie.get('name') in ['sessionid', 'sid_tt', 'sessionid_ss']:
+                    logger.debug(f"✓ Connexion détectée via cookie {cookie.get('name')}")
+                    return True
+            
+            logger.debug("✗ Aucun signe de connexion détecté")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la vérification de connexion: {e}")
             return False
     
     def upload_video(
         self, 
         video_path: str, 
+        title: str = "",
         description: str = "", 
         hashtags: Optional[List[str]] = None
     ) -> bool:
@@ -185,7 +223,8 @@ class SeleniumUploader:
         
         Args:
             video_path: Chemin absolu vers la vidéo
-            description: Description de la vidéo
+            title: Titre de la vidéo (utilisé en priorité)
+            description: Description de la vidéo (fallback si pas de titre)
             hashtags: Liste de hashtags à ajouter
             
         Returns:
@@ -194,6 +233,20 @@ class SeleniumUploader:
         if not self.is_logged_in:
             logger.error("Pas connecté à TikTok")
             return False
+        
+        # Vérifier que le driver est toujours actif
+        try:
+            _ = self.driver.current_url
+        except Exception as e:
+            logger.error(f"Le driver Selenium est fermé ou inactif: {e}")
+            logger.error("Tentative de réinitialisation...")
+            if not self.initialize_browser():
+                logger.error("Échec de la réinitialisation du navigateur")
+                return False
+            if not self.login():
+                logger.error("Échec de la reconnexion à TikTok")
+                return False
+            logger.info("✓ Reconnexion réussie")
         
         try:
             logger.info(f"Upload de la vidéo: {Path(video_path).name}")
@@ -214,11 +267,19 @@ class SeleniumUploader:
             # Attendre que la vidéo soit chargée (icône de chargement disparaît)
             time.sleep(10)
             
-            # Préparer la caption
-            if hashtags:
-                full_caption = f"{description}\n\n" + " ".join(hashtags)
+            # Utiliser la description ORIGINALE sans modification
+            # Si un titre est fourni, l'utiliser, sinon la description
+            # NE PAS ajouter de hashtags supplémentaires si hashtags=None
+            if title:
+                full_caption = title
             else:
                 full_caption = description
+            
+            # Ajouter des hashtags SEULEMENT si fournis explicitement
+            if hashtags and len(hashtags) > 0:
+                full_caption = f"{full_caption}\n\n" + " ".join(hashtags)
+            
+            logger.info(f"Caption (ORIGINALE): {full_caption[:80]}...")
             
             # Trouver la zone de caption/description
             try:
@@ -253,45 +314,195 @@ class SeleniumUploader:
             # Petite pause avant de publier
             time.sleep(3)
             
-            # Cliquer sur le bouton Publier/Post
+            # Cliquer sur le bouton Publier/Post (CRITIQUE)
+            logger.info("🔍 Recherche du bouton Publier...")
             try:
+                # Liste étendue de sélecteurs pour trouver le bouton
                 post_button_selectors = [
                     "button[data-e2e='publish-button']",
-                    "button:contains('Post')",
-                    "button:contains('Publier')",
-                    "div[role='button']:contains('Post')",
+                    "button[data-e2e='post-button']",
+                    "[data-e2e='publish-button']",
+                    "button.TUXButton--primary",
+                    "button[type='button']",
                 ]
                 
                 post_button = None
+                
+                # Essayer CSS selectors
                 for selector in post_button_selectors:
                     try:
-                        post_button = WebDriverWait(self.driver, 10).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                        )
-                        break
-                    except TimeoutException:
+                        buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        for btn in buttons:
+                            btn_text = btn.text.lower()
+                            if any(keyword in btn_text for keyword in ['post', 'publier', 'publish', 'télécharger']):
+                                post_button = btn
+                                logger.info(f"✓ Bouton trouvé via CSS: {selector} (texte: '{btn.text}')")
+                                break
+                        if post_button:
+                            break
+                    except Exception as e:
+                        logger.debug(f"Sélecteur {selector} échoué: {e}")
                         continue
                 
+                # Si pas trouvé, essayer XPath
                 if not post_button:
-                    # Essayer de trouver par XPath
-                    post_button = WebDriverWait(self.driver, 10).until(
-                        EC.element_to_be_clickable((
+                    logger.info("Essai via XPath...")
+                    try:
+                        post_button = self.driver.find_element(
                             By.XPATH, 
-                            "//button[contains(text(), 'Post') or contains(text(), 'Publier')]"
-                        ))
-                    )
+                            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'post') or "
+                            "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'publier') or "
+                            "contains(@data-e2e, 'publish')]"
+                        )
+                        logger.info(f"✓ Bouton trouvé via XPath (texte: '{post_button.text}')")
+                    except Exception as e:
+                        logger.warning(f"XPath échoué: {e}")
                 
-                post_button.click()
-                logger.info("Bouton Publier cliqué")
+                # Vérifier qu'on a trouvé le bouton
+                if not post_button:
+                    logger.error("❌ BOUTON PUBLIER INTROUVABLE - Upload manuel nécessaire")
+                    logger.warning("⚠️  Vous devez cliquer manuellement sur Publier dans le navigateur")
+                    time.sleep(60)  # Laisser 60s pour action manuelle
+                    return False
+                
+                # Attendre que le bouton soit cliquable
+                WebDriverWait(self.driver, 15).until(
+                    EC.element_to_be_clickable(post_button)
+                )
+                
+                # Scroller jusqu'au bouton si nécessaire
+                self.driver.execute_script("arguments[0].scrollIntoView(true);", post_button)
+                time.sleep(1)
+                
+                # Cliquer sur le bouton
+                logger.info("🖱️  Clic sur le bouton Publier...")
+                try:
+                    post_button.click()
+                except Exception:
+                    # Si le clic normal échoue, essayer JavaScript
+                    logger.info("Clic via JavaScript...")
+                    self.driver.execute_script("arguments[0].click();", post_button)
+                
+                logger.info("✓ Bouton Publier cliqué avec succès")
+                
+                # Attendre et gérer la popup de confirmation "Continuer à publier ?"
+                logger.info("🔍 Attente de la popup de confirmation (5 secondes)...")
+                time.sleep(5)
+                
+                # Gérer la popup de confirmation avec plusieurs tentatives
+                popup_handled = False
+                max_attempts = 3
+                
+                for attempt in range(max_attempts):
+                    try:
+                        logger.info(f"🔍 Recherche popup (tentative {attempt + 1}/{max_attempts})...")
+                        
+                        # Méthode 1: Chercher par texte dans les boutons
+                        confirm_button_xpaths = [
+                            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'publier maintenant')]",
+                            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'post now')]",
+                            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continuer')]",
+                            "//button[contains(., 'Publier maintenant')]",
+                            "//button[contains(., 'Post now')]",
+                            "//div[@role='button' and contains(., 'Publier maintenant')]",
+                            "//div[@role='button' and contains(., 'Post now')]",
+                        ]
+                        
+                        # Méthode 2: Chercher par classe CSS
+                        confirm_button_css = [
+                            "button.TUXButton--primary",
+                            "button[class*='Button--primary']",
+                            "button[class*='confirm']",
+                        ]
+                        
+                        confirm_button = None
+                        
+                        # Essayer XPath d'abord
+                        for xpath in confirm_button_xpaths:
+                            try:
+                                buttons = self.driver.find_elements(By.XPATH, xpath)
+                                for btn in buttons:
+                                    if btn.is_displayed() and btn.is_enabled():
+                                        confirm_button = btn
+                                        logger.info(f"✓ Popup détectée via XPath: {btn.text}")
+                                        break
+                                if confirm_button:
+                                    break
+                            except Exception:
+                                continue
+                        
+                        # Essayer CSS si XPath a échoué
+                        if not confirm_button:
+                            for css in confirm_button_css:
+                                try:
+                                    buttons = self.driver.find_elements(By.CSS_SELECTOR, css)
+                                    for btn in buttons:
+                                        btn_text = btn.text.lower()
+                                        if btn.is_displayed() and btn.is_enabled() and any(
+                                            keyword in btn_text for keyword in ['publier', 'post', 'continuer', 'continue']
+                                        ):
+                                            # Éviter de recliquer sur le premier bouton "Publier"
+                                            if 'maintenant' in btn_text or 'now' in btn_text or len(btn_text) > 5:
+                                                confirm_button = btn
+                                                logger.info(f"✓ Popup détectée via CSS: {btn.text}")
+                                                break
+                                    if confirm_button:
+                                        break
+                                except Exception:
+                                    continue
+                        
+                        # Si on a trouvé le bouton, cliquer dessus
+                        if confirm_button:
+                            logger.info(f"🖱️  Clic sur '{confirm_button.text}'...")
+                            
+                            # Scroller jusqu'au bouton
+                            self.driver.execute_script("arguments[0].scrollIntoView(true);", confirm_button)
+                            time.sleep(0.5)
+                            
+                            # Essayer de cliquer
+                            try:
+                                confirm_button.click()
+                            except Exception:
+                                # Si le clic normal échoue, utiliser JavaScript
+                                logger.info("Clic via JavaScript...")
+                                self.driver.execute_script("arguments[0].click();", confirm_button)
+                            
+                            logger.info("✓ Popup de confirmation acceptée !")
+                            popup_handled = True
+                            break
+                        else:
+                            # Attendre un peu avant de réessayer
+                            time.sleep(2)
+                    
+                    except Exception as e:
+                        logger.debug(f"Tentative {attempt + 1} échouée: {e}")
+                        time.sleep(2)
+                
+                if not popup_handled:
+                    logger.info("ℹ️  Pas de popup de confirmation détectée (peut-être pas nécessaire)")
+                
+                # Petite pause après la confirmation
+                time.sleep(2)
                 
                 # Attendre la confirmation de publication
                 time.sleep(10)
                 
-                logger.info("✓ Vidéo uploadée avec succès")
+                # Vérifier que la publication a réussi
+                try:
+                    # Chercher des signes de succès
+                    if "tiktok.com/@" in self.driver.current_url:
+                        logger.info("✓ URL de profil détectée - Publication réussie")
+                        return True
+                except Exception:
+                    pass
+                
+                logger.info("✓ Vidéo uploadée (vérification de l'URL de confirmation)")
                 return True
             
             except Exception as e:
-                logger.error(f"Impossible de cliquer sur Publier: {e}")
+                logger.error(f"❌ Erreur lors du clic sur Publier: {e}")
+                logger.warning("⚠️  ACTION MANUELLE REQUISE - Cliquez sur Publier dans le navigateur")
+                time.sleep(60)  # Laisser 60s pour action manuelle
                 return False
         
         except Exception as e:

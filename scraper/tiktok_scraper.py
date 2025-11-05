@@ -73,12 +73,12 @@ class TikTokScraper:
             logger.error(f"Erreur lors de la récupération des vidéos tendances: {e}")
             return videos
     
-    async def search_by_hashtag(self, hashtag: str, count: int = 30) -> List[Dict]:
+    async def search_by_keyword(self, keyword: str, count: int = 30) -> List[Dict]:
         """
-        Rechercher des vidéos par hashtag
+        Rechercher des vidéos par mot-clé (plus fiable que hashtag)
         
         Args:
-            hashtag: Hashtag à rechercher (avec ou sans #)
+            keyword: Mot-clé à rechercher (peut être un hashtag sans #)
             count: Nombre de vidéos à récupérer
             
         Returns:
@@ -88,27 +88,42 @@ class TikTokScraper:
             logger.error("API non initialisée. Appelez initialize() d'abord.")
             return []
         
-        # Nettoyer le hashtag
-        hashtag = hashtag.lstrip('#')
+        # Nettoyer le mot-clé (enlever # si présent)
+        keyword = keyword.lstrip('#')
         videos = []
         
         try:
-            logger.info(f"Recherche de vidéos pour #{hashtag}...")
-            tag = self.api.hashtag(name=hashtag)
-            async for video in tag.videos(count=count):
+            logger.info(f"Recherche de vidéos pour '{keyword}'...")
+            
+            # Utiliser l'API de recherche par mot-clé (plus fiable)
+            async for video in self.api.search.videos(keyword, count=count):
                 try:
                     video_data = self._extract_video_data(video)
-                    video_data['hashtag'] = hashtag
+                    video_data['search_keyword'] = keyword
                     videos.append(video_data)
                 except Exception as e:
                     logger.warning(f"Erreur lors de l'extraction d'une vidéo: {e}")
                     continue
             
-            logger.info(f"✓ {len(videos)} vidéos trouvées pour #{hashtag}")
+            logger.info(f"✓ {len(videos)} vidéos trouvées pour '{keyword}'")
             return videos
         except Exception as e:
-            logger.error(f"Erreur lors de la recherche pour #{hashtag}: {e}")
+            logger.error(f"Erreur lors de la recherche pour '{keyword}': {e}")
             return videos
+    
+    async def search_by_hashtag(self, hashtag: str, count: int = 30) -> List[Dict]:
+        """
+        Rechercher des vidéos par hashtag (utilise search_by_keyword en interne)
+        
+        Args:
+            hashtag: Hashtag à rechercher (avec ou sans #)
+            count: Nombre de vidéos à récupérer
+            
+        Returns:
+            Liste de dictionnaires contenant les données des vidéos
+        """
+        # Rediriger vers search_by_keyword qui est plus fiable
+        return await self.search_by_keyword(hashtag, count)
     
     def _extract_video_data(self, video) -> Dict:
         """
@@ -155,10 +170,13 @@ class TikTokScraper:
                 elif hasattr(video.video, 'playAddr'):
                     video_url = video.video.playAddr
             
+            # Extraire la description ORIGINALE (sans modification)
+            desc = video.desc if hasattr(video, 'desc') else ''
+            
             video_data = {
                 'id': str(video.id),
                 'author': video.author.username if hasattr(video.author, 'username') else 'unknown',
-                'desc': video.desc if hasattr(video, 'desc') else '',
+                'desc': desc,    # Description ORIGINALE complète (avec hashtags originaux)
                 'likes': to_int(stats.get('diggCount', 0)),
                 'views': to_int(stats.get('playCount', 0)),
                 'shares': to_int(stats.get('shareCount', 0)),
@@ -172,6 +190,33 @@ class TikTokScraper:
         except Exception as e:
             logger.error(f"Erreur lors de l'extraction des données: {e}")
             raise
+    
+    async def get_videos_by_hashtags(self) -> List[Dict]:
+        """
+        Récupérer UNIQUEMENT les vidéos par hashtags configurés
+        
+        Returns:
+            Liste des vidéos trouvées pour les hashtags
+        """
+        all_videos = []
+        
+        # Récupérer les vidéos par hashtag
+        for hashtag in self.config.TARGET_HASHTAGS:
+            hashtag_videos = await self.search_by_hashtag(
+                hashtag, 
+                self.config.HASHTAG_VIDEOS_COUNT
+            )
+            all_videos.extend(hashtag_videos)
+            logger.info(f"✓ {len(hashtag_videos)} vidéos pour {hashtag}")
+            
+            # Petite pause entre les hashtags
+            await asyncio.sleep(2)
+        
+        # Retirer les doublons basés sur l'ID
+        unique_videos = {v['id']: v for v in all_videos}.values()
+        logger.info(f"📊 Total: {len(unique_videos)} vidéos uniques récupérées pour les hashtags configurés")
+        
+        return list(unique_videos)
     
     async def get_all_videos(self) -> List[Dict]:
         """

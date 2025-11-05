@@ -2,6 +2,8 @@
 import requests
 import os
 import subprocess
+import re
+import random
 from pathlib import Path
 from typing import Dict, Optional
 import logging
@@ -24,6 +26,48 @@ class VideoDownloader:
         self.download_folder.mkdir(exist_ok=True)
         logger.info(f"VideoDownloader initialisé - Dossier: {self.download_folder}")
     
+    def _sanitize_filename(self, text: str, max_length: int = 50) -> str:
+        """
+        Nettoyer un texte pour en faire un nom de fichier valide
+        
+        Args:
+            text: Texte à nettoyer
+            max_length: Longueur max du nom
+            
+        Returns:
+            Nom de fichier nettoyé
+        """
+        if not text:
+            return "video"
+        
+        # Supprimer les hashtags pour le nom de fichier (garder les emojis)
+        text = re.sub(r'#\w+', '', text)  # Supprimer hashtags
+        text = re.sub(r'[^\w\s\U0001F300-\U0001F9FF-]', '', text)  # Garder alphanumériques, espaces et emojis
+        text = re.sub(r'\s+', ' ', text.strip())  # Normaliser espaces
+        text = text[:max_length]  # Limiter la longueur
+        
+        return text if text else "video"
+    
+    def _generate_emoji_name(self) -> str:
+        """
+        Générer un nom basé sur des vrais emojis aléatoires
+        
+        Returns:
+            Chaîne d'emojis pour le nom de fichier
+        """
+        # Liste d'emojis populaires sur TikTok
+        emojis = [
+            '🔥', '⭐', '❤️', '✨', '🚀', 
+            '💃', '🎵', '📹', '🔝', '💯',
+            '😎', '🤩', '👏', '💪', '🎉'
+        ]
+        
+        # Choisir 3-5 emojis au hasard
+        num_emojis = random.randint(3, 5)
+        selected = random.sample(emojis, num_emojis)
+        
+        return ''.join(selected)
+    
     def download_video(self, video_data: Dict) -> Optional[str]:
         """
         Télécharger une vidéo TikTok
@@ -36,9 +80,28 @@ class VideoDownloader:
         """
         video_id = video_data.get('id')
         author = video_data.get('author', 'unknown')
+        desc = video_data.get('desc', '')
         
-        filename = f"{video_id}.mp4"
+        # Créer un nom de fichier basé sur la description
+        clean_desc = self._sanitize_filename(desc, max_length=50)
+        
+        # Si la description est vide après nettoyage, utiliser des emojis
+        if clean_desc == "video" or not clean_desc or len(clean_desc) < 3:
+            clean_desc = self._generate_emoji_name()
+            logger.debug(f"Description vide, génération nom emojis: {clean_desc}")
+        
+        # Nom de fichier : description SEULEMENT (sans ID, sans underscore)
+        filename = f"{clean_desc}.mp4"
         filepath = self.download_folder / filename
+        
+        # Si le fichier existe déjà (collision), ajouter un suffixe
+        if filepath.exists():
+            counter = 1
+            while filepath.exists():
+                filename = f"{clean_desc}{counter}.mp4"
+                filepath = self.download_folder / filename
+                counter += 1
+            logger.debug(f"Nom existant, suffixe ajouté: {filename}")
         
         # Vérifier si le fichier existe déjà
         if filepath.exists():
