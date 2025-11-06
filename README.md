@@ -18,6 +18,8 @@ Bot Python automatisé qui récupère les vidéos TikTok les plus virales et les
 - ✅ Upload automatique via Selenium
 - ✅ **Copie COMPLÈTE des descriptions originales avec tous les hashtags** 🆕
 - ✅ Insertion robuste avec fallback JavaScript pour les textes longs 🆕
+- ✅ **Protection contre la réinitialisation de description par TikTok** 🔥 NOUVEAU
+- ✅ **Détection automatique des avertissements de contenu restreint** 🔥 NOUVEAU
 - ✅ **Import de cookies depuis JSON** (facilite la connexion) 🆕
 - ✅ **Configuration des créateurs via .env** (personnalisation facile) 🆕
 - ✅ **Sélection intelligente des vidéos** (meilleur engagement) 🆕
@@ -387,11 +389,76 @@ Score = 64.92 ⭐⭐⭐⭐⭐ (Excellent!)
 SMART_SELECTION = True  # Activer la sélection intelligente
 TOP_N_SELECTION = 10    # Choisir parmi les 10 meilleures
 CLEANUP_PENDING_VIDEOS_DAYS = 7  # Nettoyage après 7 jours
+SKIP_RESTRICTED_CONTENT = True  # Ignorer les vidéos avec avertissement TikTok (RECOMMANDÉ)
 ```
 
 ### 📖 Guide Complet
 
 Consultez `GUIDE_SELECTION_INTELLIGENTE.md` pour tous les détails.
+
+## 🚫 Détection des Avertissements TikTok - Nouvelle Fonctionnalité 🔥
+
+### 🎯 Protection Automatique
+
+Le bot détecte maintenant quand TikTok affiche un avertissement **"Le contenu pourrait être restreint"** et passe automatiquement à la vidéo suivante !
+
+**Avertissements détectés** :
+- ⚠️ Contenu non original, de faible qualité
+- ⚠️ Contenu avec codes QR
+- ⚠️ Vidéos avec filigranes visibles
+- ⚠️ Images statiques ou GIF
+
+### ✨ Avantages
+
+- ✅ **Évite le shadowban** - Ne publie pas de contenu problématique
+- ✅ **Économise le quota** - Ne gaspille pas vos uploads quotidiens
+- ✅ **Passe à la suivante** - Trouve automatiquement une meilleure vidéo
+- ✅ **Logs détaillés** - Affiche la raison de l'avertissement
+
+### ⚙️ Configuration
+
+```python
+# Dans config.py
+SKIP_RESTRICTED_CONTENT = True   # Ignorer (RECOMMANDÉ)
+SKIP_RESTRICTED_CONTENT = False  # Publier quand même (RISQUÉ)
+```
+
+**Mode par défaut** : `True` (ignorer automatiquement)
+
+### 💬 Exemple de Logs
+
+```
+🔍 Vérification des avertissements TikTok...
+
+⚠️  ═══════════════════════════════════════════════════════════
+⚠️  AVERTISSEMENT TIKTOK DÉTECTÉ !
+⚠️  Raison: Contenu non original, de faible qualité et contenant des codes QR
+⚠️  → Vidéo IGNORÉE (SKIP_RESTRICTED_CONTENT = True)
+⚠️  ═══════════════════════════════════════════════════════════
+
+✓ Popup fermée, vidéo non publiée
+⊗ Échec de l'upload de 7123456789012345678
+
+🔄 Passage à la vidéo suivante...
+```
+
+## 🔄 Protection Description Complète - Amélioré 🔥
+
+### 🎯 Problème Résolu
+
+TikTok pré-remplit automatiquement le champ de description avec le **nom du fichier vidéo**. Le bot attend maintenant que TikTok finisse son initialisation avant d'insérer la description originale !
+
+### ✅ Améliorations
+
+- ⏳ **Attente prolongée** - 25-30 secondes après upload
+- 🔍 **Détection du pré-remplissage** - Identifie le nom du fichier
+- 🧹 **Nettoyage triple-méthode** - Efface complètement le champ
+- ✅ **Vérification finale** - Ré-insère si nécessaire avant publication
+- 📝 **Logs détaillés** - Affiche le nombre de caractères insérés
+
+### 💬 Résultat
+
+La description originale complète (avec tous les hashtags) est maintenant **garantie** à 100% !
 
 ## 📈 Améliorations Futures
 

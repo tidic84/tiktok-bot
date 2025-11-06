@@ -99,6 +99,9 @@ class Config:
     TOP_N_SELECTION = 10  # Sélectionner aléatoirement parmi les N meilleures vidéos
     CLEANUP_PENDING_VIDEOS_DAYS = 7  # Supprimer les vidéos en attente après N jours
     
+    # Gestion des avertissements TikTok
+    SKIP_RESTRICTED_CONTENT = True  # Ignorer automatiquement les vidéos avec avertissement de contenu restreint
+    
     @classmethod
     def create_folders(cls):
         """Créer les dossiers nécessaires s'ils n'existent pas"""

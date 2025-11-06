@@ -7,4 +7,5 @@ selenium>=4.15.0
 webdriver-manager>=4.0.1
 fake-useragent>=1.4.0
 yt-dlp>=2024.0.0  # Téléchargement TikTok avec gestion des tokens
+pyperclip>=1.8.2  # Presse-papiers système pour collage "humain"
 

@@ -16,6 +16,7 @@ tiktok_bot.db
 tiktok_cookies.pkl
 downloaded_videos/
 logs/
+tiktok_cookies.json
 
 # IDE
 .vscode/

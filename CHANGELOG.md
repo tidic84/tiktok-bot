@@ -2,6 +2,53 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [1.4.0] - 2025-11-06
+
+### 🚫 Détection des Avertissements TikTok + Correction Description
+
+#### ✅ Ajouté
+
+**Détection des Avertissements de Contenu Restreint**
+- Détection automatique de la popup "Le contenu pourrait être restreint"
+- Support multilingue (français et anglais)
+- Détection des motifs d'infraction (contenu non original, faible qualité, codes QR, etc.)
+- Configuration `SKIP_RESTRICTED_CONTENT` pour ignorer ou publier malgré l'avertissement
+- Clic automatique sur "Supprimer" ou "Publier" selon la configuration
+- Logs détaillés avec raison de l'avertissement
+- Passage automatique à la vidéo suivante si ignorée
+
+**Sélecteurs d'Avertissements Détectés**
+- "Le contenu pourrait être restreint" / "Content may be restricted"
+- "Contenu non original" / "Non-original content"
+- "Faible qualité" / "Low quality"
+- Boutons "Supprimer" / "Delete"
+
+#### 🔧 Modifié
+
+**Correction Description Réinitialisée**
+- Attente prolongée après upload (25-30 secondes au total)
+- Détection du pré-remplissage automatique par TikTok (nom du fichier)
+- Nettoyage complet triple-méthode (Ctrl+A+Delete, JavaScript, clear())
+- Vérification que le champ est bien vide avant insertion
+- Vérification finale avant publication avec ré-insertion automatique
+- Attente de la preview vidéo (max 30s) pour confirmer le chargement
+- Logs détaillés pour chaque étape
+
+**Fichiers Modifiés**
+- `config.py`: Ajout de `SKIP_RESTRICTED_CONTENT = True`
+- `uploader/selenium_uploader.py`: Détection des avertissements + correction description
+
+#### 💡 Avantages
+
+- ✨ Évite de publier du contenu qui sera mal référencé
+- ✨ Protège le compte contre le shadowban
+- ✨ Économise le quota d'uploads quotidien
+- ✨ Description originale complète garantie (plus de réinitialisation)
+- ✨ Passage automatique à la vidéo suivante en cas de problème
+- ✨ Logs détaillés pour diagnostic
+
+---
+
 ## [1.3.0] - 2025-11-06
 
 ### 🎯 Sélection Intelligente des Vidéos + Retraitement Automatique
