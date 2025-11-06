@@ -49,14 +49,34 @@ class SeleniumUploader:
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option('useAutomationExtension', False)
             
-            # User agent aléatoire
-            ua = UserAgent()
-            options.add_argument(f'user-agent={ua.chrome}')
+            # User agent LINUX DESKTOP cohérent (pas Windows/Mac/Android)
+            # Version récente de Chrome sur Linux x86_64
+            linux_user_agent = (
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+            )
+            options.add_argument(f'user-agent={linux_user_agent}')
+            logger.debug(f"User-Agent: {linux_user_agent}")
             
-            # Autres options
+            # Autres options pour ressembler à un vrai navigateur
             options.add_argument('--start-maximized')
             options.add_argument('--disable-notifications')
             options.add_argument('--disable-popup-blocking')
+            
+            # Options anti-détection supplémentaires
+            options.add_argument('--disable-dev-shm-usage')  # Évite problèmes mémoire partagée
+            options.add_argument('--disable-gpu')  # Évite problèmes GPU
+            options.add_argument('--no-sandbox')  # Requis sur certains systèmes Linux
+            options.add_argument('--lang=fr-FR')  # Langue française cohérente
+            
+            # Préférences pour ressembler à un utilisateur réel
+            prefs = {
+                "profile.default_content_setting_values.notifications": 2,  # Bloquer notifications
+                "credentials_enable_service": False,
+                "profile.password_manager_enabled": False,
+                "intl.accept_languages": "fr-FR,fr,en-US,en"  # Langues préférées
+            }
+            options.add_experimental_option("prefs", prefs)
             
             if self.config.HEADLESS_MODE:
                 options.add_argument('--headless=new')
@@ -66,12 +86,43 @@ class SeleniumUploader:
             service = Service(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=options)
             
-            # Modifier webdriver property pour éviter détection
+            # Modifier webdriver property + navigator pour éviter détection
             self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
                 'source': '''
+                    // Masquer webdriver
                     Object.defineProperty(navigator, 'webdriver', {
                         get: () => undefined
-                    })
+                    });
+                    
+                    // Forcer platform Linux
+                    Object.defineProperty(navigator, 'platform', {
+                        get: () => 'Linux x86_64'
+                    });
+                    
+                    // Ajouter plugins réalistes (PDF viewer)
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [
+                            {
+                                0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format"},
+                                description: "Portable Document Format",
+                                filename: "internal-pdf-viewer",
+                                length: 1,
+                                name: "Chrome PDF Plugin"
+                            },
+                            {
+                                0: {type: "application/pdf", suffixes: "pdf", description: "Portable Document Format"},
+                                description: "Portable Document Format",
+                                filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai",
+                                length: 1,
+                                name: "Chrome PDF Viewer"
+                            }
+                        ]
+                    });
+                    
+                    // Languages cohérents
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['fr-FR', 'fr', 'en-US', 'en']
+                    });
                 '''
             })
             
