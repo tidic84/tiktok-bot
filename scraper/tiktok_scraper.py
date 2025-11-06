@@ -170,13 +170,17 @@ class TikTokScraper:
                 elif hasattr(video.video, 'playAddr'):
                     video_url = video.video.playAddr
             
-            # Extraire la description ORIGINALE (sans modification)
+            # Extraire la description ORIGINALE COMPLÈTE (sans modification ni troncature)
             desc = video.desc if hasattr(video, 'desc') else ''
+            
+            # S'assurer que la description est complète (pas tronquée)
+            if hasattr(video, 'as_dict') and 'desc' in video.as_dict:
+                desc = video.as_dict['desc']
             
             video_data = {
                 'id': str(video.id),
                 'author': video.author.username if hasattr(video.author, 'username') else 'unknown',
-                'desc': desc,    # Description ORIGINALE complète (avec hashtags originaux)
+                'desc': desc,    # Description ORIGINALE COMPLÈTE (avec tous les hashtags originaux)
                 'likes': to_int(stats.get('diggCount', 0)),
                 'views': to_int(stats.get('playCount', 0)),
                 'shares': to_int(stats.get('shareCount', 0)),

@@ -195,22 +195,19 @@ class TikTokBot:
                     self.uploader_ready = True
                     logger.info("✓ Selenium prêt pour les uploads")
                 
-                # Utiliser la description ORIGINALE de la vidéo TikTok
-                original_description = video.get('desc', '')  # Description complète originale
+                # Utiliser la description ORIGINALE COMPLÈTE de la vidéo TikTok
+                # La description contient déjà les hashtags originaux, on ne les modifie PAS
+                original_description = video.get('desc', '')  # Description complète originale avec hashtags
                 
-                # Ajouter des hashtags configurés + génériques pour augmenter la visibilité
-                hashtags_to_add = self.config.TARGET_HASHTAGS + ['#fyp', '#viral', '#pourtoi', '#foryou']
+                logger.info(f"📝 Description originale complète ({len(original_description)} caractères): {original_description[:100]}...")
                 
-                logger.info(f"📝 Description originale: {original_description[:80]}...")
-                logger.info(f"🏷️  Hashtags ajoutés: {' '.join(hashtags_to_add)}")
-                
-                # Upload sur TikTok avec la description originale + hashtags
+                # Upload sur TikTok avec la description ORIGINALE COMPLÈTE (sans ajouter de hashtags)
                 logger.info(f"Upload de la vidéo {video['id']}...")
                 upload_success = self.uploader.upload_video(
                     video_path=video_path,
                     title="",  # Pas de titre séparé
-                    description=original_description,  # Description ORIGINALE
-                    hashtags=hashtags_to_add  # Hashtags pour visibilité
+                    description=original_description,  # Description ORIGINALE COMPLÈTE
+                    hashtags=None  # Pas de hashtags supplémentaires (déjà dans la description)
                 )
                 
                 if upload_success:

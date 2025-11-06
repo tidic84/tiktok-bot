@@ -68,10 +68,12 @@ class URLScraper:
                 
                 try:
                     video_info = json.loads(line)
+                    # Récupérer la description COMPLÈTE (yt-dlp la fournit complète)
+                    description = video_info.get('description', '')
                     video_data = {
                         'id': video_info.get('id', ''),
                         'author': username,
-                        'desc': video_info.get('description', ''),
+                        'desc': description,  # Description COMPLÈTE avec hashtags originaux
                         'likes': video_info.get('like_count', 0),
                         'views': video_info.get('view_count', 0),
                         'shares': video_info.get('repost_count', 0),
@@ -131,10 +133,12 @@ class URLScraper:
                     continue
                 
                 video_info = json.loads(result.stdout)
+                # Récupérer la description COMPLÈTE
+                description = video_info.get('description', '')
                 video_data = {
                     'id': video_info.get('id', ''),
                     'author': video_info.get('uploader_id', 'unknown'),
-                    'desc': video_info.get('description', ''),
+                    'desc': description,  # Description COMPLÈTE avec hashtags originaux
                     'likes': video_info.get('like_count', 0),
                     'views': video_info.get('view_count', 0),
                     'shares': video_info.get('repost_count', 0),
@@ -232,10 +236,12 @@ class URLScraper:
                         
                         try:
                             video_info = json.loads(line)
+                            # Récupérer la description COMPLÈTE
+                            description = video_info.get('description', '')
                             video_data = {
                                 'id': video_info.get('id', ''),
                                 'author': video_info.get('uploader_id', 'unknown'),
-                                'desc': video_info.get('description', ''),
+                                'desc': description,  # Description COMPLÈTE avec hashtags originaux
                                 'likes': video_info.get('like_count', 0),
                                 'views': video_info.get('view_count', 0),
                                 'shares': video_info.get('repost_count', 0),

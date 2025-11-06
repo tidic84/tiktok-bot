@@ -267,7 +267,7 @@ class SeleniumUploader:
             # Attendre que la vidéo soit chargée (icône de chargement disparaît)
             time.sleep(10)
             
-            # Utiliser la description ORIGINALE sans modification
+            # Utiliser la description ORIGINALE COMPLÈTE sans modification
             # Si un titre est fourni, l'utiliser, sinon la description
             # NE PAS ajouter de hashtags supplémentaires si hashtags=None
             if title:
@@ -279,9 +279,9 @@ class SeleniumUploader:
             if hashtags and len(hashtags) > 0:
                 full_caption = f"{full_caption}\n\n" + " ".join(hashtags)
             
-            logger.info(f"Caption (ORIGINALE): {full_caption[:80]}...")
+            logger.info(f"Caption COMPLÈTE ({len(full_caption)} caractères): {full_caption[:100]}...")
             
-            # Trouver la zone de caption/description
+            # Trouver la zone de caption/description et insérer le texte COMPLET
             try:
                 # Plusieurs sélecteurs possibles selon la version de TikTok
                 caption_selectors = [
@@ -296,15 +296,47 @@ class SeleniumUploader:
                         caption_box = WebDriverWait(self.driver, 10).until(
                             EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                         )
+                        logger.info(f"✓ Zone de description trouvée avec sélecteur: {selector}")
                         break
                     except TimeoutException:
                         continue
                 
                 if caption_box:
+                    # Cliquer sur la zone
                     caption_box.click()
                     time.sleep(1)
-                    caption_box.send_keys(full_caption)
-                    logger.info("Description ajoutée")
+                    
+                    # Méthode 1: Essayer d'insérer via send_keys (standard)
+                    try:
+                        caption_box.send_keys(full_caption)
+                        logger.info("✓ Description insérée via send_keys")
+                    except Exception as e:
+                        logger.warning(f"send_keys échoué: {e}, essai avec JavaScript...")
+                        
+                        # Méthode 2: Utiliser JavaScript pour insérer le texte (plus fiable pour les longs textes)
+                        # Échapper les caractères spéciaux pour JavaScript
+                        escaped_caption = full_caption.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+                        
+                        # Insérer le texte via JavaScript
+                        js_script = f'''
+                        var element = arguments[0];
+                        element.focus();
+                        element.textContent = "{escaped_caption}";
+                        element.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        element.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        '''
+                        
+                        self.driver.execute_script(js_script, caption_box)
+                        logger.info("✓ Description insérée via JavaScript")
+                    
+                    # Vérifier que le texte a bien été inséré
+                    time.sleep(1)
+                    inserted_text = caption_box.text or caption_box.get_attribute('textContent') or ''
+                    logger.info(f"✓ Texte inséré vérifié: {len(inserted_text)} caractères (attendu: {len(full_caption)})")
+                    
+                    if len(inserted_text) < len(full_caption) * 0.9:  # Si moins de 90% du texte
+                        logger.warning(f"⚠️  Attention: seulement {len(inserted_text)}/{len(full_caption)} caractères insérés")
+                    
                 else:
                     logger.warning("Zone de description non trouvée, upload sans description")
             

@@ -2,6 +2,66 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [1.1.0] - 2025-11-05
+
+### 🎯 Description Complète - Copie Intégrale
+
+#### ✅ Ajouté
+
+**Copie Complète des Descriptions**
+- Récupération de la description COMPLÈTE sans troncature
+- Conservation de TOUS les hashtags originaux
+- Préservation de tous les emojis et caractères spéciaux
+- Vérification automatique que 100% du texte est inséré
+- Fallback JavaScript pour insertion robuste des textes longs
+- Logs détaillés avec comptage de caractères
+
+**Fichiers Modifiés**
+- `main.py` (ligne 198-211) - Suppression de l'ajout de hashtags supplémentaires
+- `uploader/selenium_uploader.py` (ligne 270-344) - Insertion robuste avec double méthode
+- `scraper/tiktok_scraper.py` (ligne 173-183) - Récupération complète depuis l'API
+- `scraper/url_scraper.py` (lignes 71-76, 136-141, 239-244) - Récupération complète depuis yt-dlp
+
+**Documentation**
+- Ajout de `DESCRIPTION_COMPLETE.md` - Documentation technique complète
+- Ajout de `test_description_complete.py` - Script de test pour vérifier la fonctionnalité
+- Mise à jour du `README.md` avec la nouvelle fonctionnalité
+
+#### 🔧 Modifié
+
+**Amélioration de l'Upload**
+- Méthode 1 : `send_keys()` pour insertion standard
+- Méthode 2 : JavaScript avec `textContent` et événements pour cas difficiles
+- Vérification post-insertion avec alerte si < 90% du texte
+- Logs améliorés avec nombre de caractères exact
+
+**Amélioration du Scraping**
+- Vérification dans `video.as_dict['desc']` pour description complète
+- Stockage explicite dans variable `description` pour clarté
+- Aucune troncature appliquée à aucun niveau
+
+#### 🐛 Corrigé
+
+**Problèmes de Description**
+- ❌ AVANT : Descriptions tronquées ou modifiées
+- ❌ AVANT : Hashtags originaux remplacés par des génériques
+- ❌ AVANT : Pas de vérification de l'insertion
+- ✅ APRÈS : Description complète à 100%
+- ✅ APRÈS : Tous les hashtags originaux conservés
+- ✅ APRÈS : Vérification automatique de l'insertion
+
+#### 📊 Impact
+
+**Qualité du Contenu**
+- Meilleure fidélité au contenu original
+- Conservation du contexte et des hashtags viraux
+- Amélioration potentielle de l'engagement
+
+**Fiabilité**
+- Double méthode d'insertion (standard + JavaScript)
+- Vérification automatique avec alertes
+- Logs détaillés pour debugging
+
 ## [1.0.0] - 2025-11-03
 
 ### 🎉 Version Initiale

@@ -16,6 +16,8 @@ Bot Python automatisé qui récupère les vidéos TikTok les plus virales et les
 - ✅ Filtrage intelligent par engagement (likes, vues, commentaires)
 - ✅ Téléchargement automatique des vidéos MP4
 - ✅ Upload automatique via Selenium
+- ✅ **Copie COMPLÈTE des descriptions originales avec tous les hashtags** 🆕
+- ✅ Insertion robuste avec fallback JavaScript pour les textes longs 🆕
 - ✅ Base de données SQLite pour éviter les doublons
 - ✅ Rate limiting intelligent pour éviter les bans
 - ✅ Simulation de comportement humain (délais aléatoires, heures d'activité)
@@ -215,6 +217,50 @@ HEADLESS_MODE = True           # Navigateur invisible
 - Réduisez `MAX_VIDEOS_PER_DAY` (ex: 5-10)
 - Augmentez les délais entre uploads
 - Utilisez un VPN ou proxy
+
+## 📝 Description Complète - Nouvelle Fonctionnalité
+
+### ✨ Copie Intégrale des Descriptions
+
+Le bot copie maintenant **la description COMPLÈTE** des vidéos TikTok, incluant :
+
+- ✅ **Tout le texte original** sans troncature
+- ✅ **Tous les hashtags originaux** préservés
+- ✅ **Tous les emojis** conservés
+- ✅ **Vérification automatique** de l'insertion
+- ✅ **Fallback JavaScript** pour les textes longs
+
+### 🔍 Comment ça marche ?
+
+1. **Récupération** : La description complète est extraite depuis l'API TikTok ou yt-dlp
+2. **Conservation** : Aucune modification n'est appliquée (pas d'ajout de hashtags)
+3. **Insertion** : Deux méthodes pour garantir l'insertion complète :
+   - Méthode standard (`send_keys`)
+   - Fallback JavaScript pour les cas difficiles
+4. **Vérification** : Le bot vérifie que 100% du texte a été inséré
+
+### 📊 Logs Détaillés
+
+```
+📝 Description originale complète (245 caractères): crispy beef tacos 🌮...
+✓ Zone de description trouvée avec sélecteur: div[contenteditable='true']
+✓ Description insérée via send_keys
+✓ Texte inséré vérifié: 245 caractères (attendu: 245)
+```
+
+### 🧪 Tester la Fonctionnalité
+
+Utilisez le script de test fourni :
+
+```bash
+python test_description_complete.py
+```
+
+Ce script récupère quelques vidéos et affiche les descriptions complètes pour vérification.
+
+### 📖 Documentation Complète
+
+Consultez `DESCRIPTION_COMPLETE.md` pour tous les détails techniques.
 
 ## 📈 Améliorations Futures
 
