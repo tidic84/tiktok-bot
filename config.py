@@ -33,15 +33,22 @@ class Config:
     
     # Créateurs TikTok à suivre (utilisé si SCRAPING_MODE = 'creators')
     # Trouvez des créateurs populaires dans votre niche
+    # Peut être configuré dans .env avec TARGET_CREATORS (séparés par des virgules)
     # Exemples pour food/recipes:
-    TARGET_CREATORS = [
-        'aflavorfulbite',  # Gordon Ramsay - chef célèbre
-        'joandbart',          # Recettes simples et rapides
-        'feelgoodfoodie',         # Recettes healthy
-        'cookingwithshereen',     # Recettes moyen-orientales
-        'freshfitfood_',
-        'malcomsfood2'                # Recettes virales
-    ]
+    _creators_env = os.getenv('TARGET_CREATORS', '')
+    if _creators_env.strip():
+        # Charger depuis .env (séparés par des virgules)
+        TARGET_CREATORS = [c.strip() for c in _creators_env.split(',') if c.strip()]
+    else:
+        # Valeurs par défaut
+        TARGET_CREATORS = [
+            'aflavorfulbite',  # Gordon Ramsay - chef célèbre
+            'joandbart',          # Recettes simples et rapides
+            'feelgoodfoodie',         # Recettes healthy
+            'cookingwithshereen',     # Recettes moyen-orientales
+            'freshfitfood_',
+            'malcomsfood2'                # Recettes virales
+        ]
     
     # Nombre de vidéos à récupérer par créateur (mode 'creators')
     VIDEOS_PER_CREATOR = 10
@@ -86,6 +93,11 @@ class Config:
     AUTO_CLEANUP_VIDEOS = True  # Supprimer automatiquement les vieilles vidéos
     KEEP_VIDEOS_DAYS = 0.03  # Conserver les vidéos pendant 0.03 jours (environ 0.72 heures)
     CLEANUP_ON_STARTUP = True  # Nettoyer au démarrage du bot
+    
+    # Sélection intelligente des vidéos
+    SMART_SELECTION = True  # Activer la sélection intelligente
+    TOP_N_SELECTION = 10  # Sélectionner aléatoirement parmi les N meilleures vidéos
+    CLEANUP_PENDING_VIDEOS_DAYS = 7  # Supprimer les vidéos en attente après N jours
     
     @classmethod
     def create_folders(cls):

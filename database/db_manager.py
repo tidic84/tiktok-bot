@@ -47,15 +47,20 @@ class DatabaseManager:
     
     def is_video_processed(self, video_id: str) -> bool:
         """
-        Vérifier si une vidéo a déjà été traitée
+        Vérifier si une vidéo a déjà été traitée (uploadée)
+        
+        Une vidéo n'est considérée comme "traitée" que si elle a été UPLOADÉE.
+        Les vidéos téléchargées mais non uploadées peuvent être retraitées.
         
         Args:
             video_id: ID de la vidéo TikTok
             
         Returns:
-            True si la vidéo existe déjà en base
+            True si la vidéo a déjà été uploadée
         """
-        return self.session.query(ProcessedVideo).filter_by(id=video_id).first() is not None
+        video = self.session.query(ProcessedVideo).filter_by(id=video_id).first()
+        # Seules les vidéos UPLOADÉES sont considérées comme traitées
+        return video is not None and video.is_uploaded
     
     def add_video(self, video_data: Dict) -> bool:
         """
@@ -144,6 +149,63 @@ class DatabaseManager:
         return self.session.query(ProcessedVideo).order_by(
             ProcessedVideo.downloaded_at.desc()
         ).limit(limit).all()
+    
+    def is_video_uploaded(self, video_id: str) -> bool:
+        """
+        Vérifier si une vidéo a déjà été uploadée
+        
+        Args:
+            video_id: ID de la vidéo TikTok
+            
+        Returns:
+            True si la vidéo a déjà été uploadée
+        """
+        video = self.session.query(ProcessedVideo).filter_by(id=video_id).first()
+        return video is not None and video.is_uploaded
+    
+    def get_pending_videos(self, limit: int = 100) -> List[ProcessedVideo]:
+        """
+        Obtenir les vidéos téléchargées mais non uploadées
+        
+        Ces vidéos peuvent être retraitées au prochain cycle.
+        
+        Args:
+            limit: Nombre maximum de vidéos à retourner
+            
+        Returns:
+            Liste des vidéos en attente
+        """
+        return self.session.query(ProcessedVideo).filter(
+            ProcessedVideo.is_uploaded == False
+        ).order_by(
+            ProcessedVideo.downloaded_at.desc()
+        ).limit(limit).all()
+    
+    def cleanup_old_pending_videos(self, days: int = 7) -> int:
+        """
+        Supprimer les vidéos en attente trop anciennes
+        
+        Args:
+            days: Âge en jours au-delà duquel supprimer
+            
+        Returns:
+            Nombre de vidéos supprimées
+        """
+        from datetime import timedelta
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            count = self.session.query(ProcessedVideo).filter(
+                ProcessedVideo.is_uploaded == False,
+                ProcessedVideo.downloaded_at < cutoff_date
+            ).delete()
+            self.session.commit()
+            if count > 0:
+                logger.info(f"✓ {count} vidéo(s) en attente supprimée(s) (>{days} jours)")
+            return count
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Erreur lors du nettoyage des vidéos en attente: {e}")
+            return 0
     
     def close(self):
         """Fermer la session de base de données"""

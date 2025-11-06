@@ -117,29 +117,47 @@ class TikTokBot:
                 logger.warning("Aucune vidéo récupérée")
                 return
             
-            # 2. Filtrer les meilleures vidéos
-            logger.info("\n--- Phase 2: Filtrage des vidéos ---")
-            quality_videos = self.filter.filter_videos(all_videos)
+            # 2. Sélection intelligente de la meilleure vidéo
+            logger.info("\n--- Phase 2: Sélection de la vidéo ---")
             
-            if not quality_videos:
-                logger.warning("Aucune vidéo ne correspond aux critères")
-                return
+            if self.config.SMART_SELECTION:
+                # Sélection aléatoire parmi les N meilleures
+                try:
+                    selected_video = self.filter.select_best_video_randomly(
+                        all_videos, 
+                        top_n=self.config.TOP_N_SELECTION
+                    )
+                    videos_to_upload = [selected_video]
+                    logger.info(f"✓ 1 vidéo sélectionnée intelligemment (parmi top {self.config.TOP_N_SELECTION})")
+                except ValueError as e:
+                    logger.warning(f"Aucune vidéo ne correspond aux critères: {e}")
+                    return
+            else:
+                # Ancienne méthode: traiter plusieurs vidéos
+                quality_videos = self.filter.filter_videos(all_videos)
+                
+                if not quality_videos:
+                    logger.warning("Aucune vidéo ne correspond aux critères")
+                    return
+                
+                videos_to_upload = quality_videos[:remaining_slots]
+                logger.info(f"✓ {len(videos_to_upload)} vidéos sélectionnées (mode classique)")
             
-            # 3. Traiter chaque vidéo
-            logger.info(f"\n--- Phase 3: Traitement de {min(len(quality_videos), remaining_slots)} vidéos ---")
+            # 3. Traiter la/les vidéo(s) sélectionnée(s)
+            logger.info(f"\n--- Phase 3: Traitement de {len(videos_to_upload)} vidéo(s) ---")
             
             uploaded_count = 0
             
-            for i, video in enumerate(quality_videos):
+            for i, video in enumerate(videos_to_upload):
                 if uploaded_count >= remaining_slots:
                     logger.info(f"✓ Limite de {remaining_slots} vidéos atteinte pour ce cycle")
                     break
                 
-                logger.info(f"\n[{i+1}/{len(quality_videos)}] Traitement de la vidéo {video['id']}")
+                logger.info(f"\n[{i+1}/{len(videos_to_upload)}] Traitement de la vidéo {video['id']}")
                 
-                # Vérifier si déjà traitée
-                if self.db.is_video_processed(video['id']):
-                    logger.info(f"⊗ Vidéo {video['id']} déjà traitée, passage à la suivante")
+                # Vérifier si déjà uploadée (seules les vidéos UPLOADÉES sont considérées comme traitées)
+                if self.db.is_video_uploaded(video['id']):
+                    logger.info(f"⊗ Vidéo {video['id']} déjà uploadée, passage à la suivante")
                     continue
                 
                 # Télécharger la vidéo
@@ -267,6 +285,13 @@ class TikTokBot:
                 
                 if files_deleted > 0:
                     logger.info(f"✓ {files_deleted} vidéo(s) supprimée(s), {space_freed:.2f} MB libérés")
+                
+                # Nettoyage des vidéos en attente trop anciennes
+                pending_deleted = self.db.cleanup_old_pending_videos(
+                    days=self.config.CLEANUP_PENDING_VIDEOS_DAYS
+                )
+                if pending_deleted > 0:
+                    logger.info(f"✓ {pending_deleted} vidéo(s) en attente supprimée(s) de la DB")
             
             # Boucle principale
             cycle_count = 0
@@ -281,6 +306,8 @@ class TikTokBot:
                     if cycle_count % 10 == 0 and self.config.AUTO_CLEANUP_VIDEOS:
                         logger.info("\n🧹 Nettoyage périodique...")
                         self.cleaner.cleanup_old_videos()
+                        # Nettoyage des vidéos en attente
+                        self.db.cleanup_old_pending_videos(days=self.config.CLEANUP_PENDING_VIDEOS_DAYS)
                     
                     # Initialiser le scraper seulement si mode API
                     if self.config.SCRAPING_MODE == 'api':

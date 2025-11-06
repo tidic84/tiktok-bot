@@ -2,6 +2,141 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [1.3.0] - 2025-11-06
+
+### 🎯 Sélection Intelligente des Vidéos + Retraitement Automatique
+
+#### ✅ Ajouté
+
+**Sélection Intelligente**
+- Nouveau système de sélection aléatoire parmi les N meilleures vidéos
+- Calcul de score de viralité pour chaque vidéo
+- Méthode `select_best_video_randomly()` dans `VideoFilter`
+- Méthode `get_top_videos_by_creator()` pour diversité par créateur
+- Configuration `SMART_SELECTION` et `TOP_N_SELECTION`
+- Documentation complète dans `GUIDE_SELECTION_INTELLIGENTE.md`
+
+**Retraitement Automatique**
+- Distinction entre vidéos uploadées (définitives) et en attente (retraitables)
+- Méthode `is_video_uploaded()` pour vérifier le statut d'upload
+- Méthode `get_pending_videos()` pour récupérer les vidéos en attente
+- Méthode `cleanup_old_pending_videos()` pour nettoyage automatique
+- Configuration `CLEANUP_PENDING_VIDEOS_DAYS`
+
+**Fichiers Créés**
+- `GUIDE_SELECTION_INTELLIGENTE.md` - Guide complet de la sélection intelligente
+
+#### 🔧 Modifié
+
+**database/db_manager.py**
+- `is_video_processed()` vérifie maintenant seulement si la vidéo est UPLOADÉE
+- Ajout de 3 nouvelles méthodes pour la gestion des vidéos en attente
+- Les vidéos non uploadées peuvent être retraitées
+
+**scraper/video_filter.py**
+- Ajout de `select_best_video_randomly()` pour sélection intelligente
+- Ajout de `get_top_videos_by_creator()` pour diversité
+- Import de `random` pour sélection aléatoire
+
+**config.py**
+- Ajout de `SMART_SELECTION` (True par défaut)
+- Ajout de `TOP_N_SELECTION` (10 par défaut)
+- Ajout de `CLEANUP_PENDING_VIDEOS_DAYS` (7 jours par défaut)
+
+**main.py**
+- Nouvelle logique de sélection (phase 2 modifiée)
+- Upload d'une seule vidéo par cycle (si SMART_SELECTION=True)
+- Utilisation de `is_video_uploaded()` au lieu de `is_video_processed()`
+- Nettoyage automatique des vidéos en attente au démarrage et périodiquement
+
+**README.md**
+- Section "Sélection Intelligente des Vidéos" ajoutée
+- Explication du score de viralité
+- Avantages du retraitement automatique
+
+#### 📊 Avantages
+
+**Sélection Intelligente**
+- ✨ Qualité maximale garantie (seules les meilleures vidéos)
+- ✨ Diversité grâce à la sélection aléatoire
+- ✨ Score scientifique basé sur l'engagement réel
+- ✨ 1 seule vidéo par cycle (plus efficace)
+
+**Retraitement Automatique**
+- ✨ Vidéos uploadées ne sont jamais republiées
+- ✨ Vidéos non uploadées peuvent être retentées
+- ✨ Pas de perte de contenu de qualité
+- ✨ Nettoyage automatique des anciennes
+
+#### 🎯 Score de Viralité
+
+```python
+score = (taux_engagement × 100) + (likes / 10000) + (shares / 1000)
+
+où:
+  taux_engagement = (likes + commentaires + partages) / vues
+```
+
+## [1.2.0] - 2025-11-06
+
+### 🍪 Import de Cookies JSON + ⚙️ Configuration .env
+
+#### ✅ Ajouté
+
+**Import de Cookies JSON**
+- Nouveau module `uploader/cookie_manager.py` pour gérer les cookies
+- Support de l'import de cookies depuis JSON (format navigateur)
+- Conversion automatique JSON → Selenium
+- Backup automatique en JSON lors de la sauvegarde
+- Script `import_cookies.py` pour faciliter l'import
+- Documentation complète dans `GUIDE_COOKIES_JSON.md`
+
+**Configuration via .env**
+- Support de `TARGET_CREATORS` dans le fichier `.env`
+- Créateurs configurables sans modifier le code
+- Fallback automatique vers valeurs par défaut
+- Fichier `env.example` fourni comme template
+- Documentation complète dans `GUIDE_CONFIGURATION_ENV.md`
+
+**Fichiers Créés**
+- `uploader/cookie_manager.py` - Gestionnaire de cookies (200 lignes)
+- `import_cookies.py` - Script d'import de cookies (70 lignes)
+- `GUIDE_COOKIES_JSON.md` - Guide complet pour les cookies
+- `GUIDE_CONFIGURATION_ENV.md` - Guide complet pour la configuration
+- `env.example` - Template de configuration
+
+#### 🔧 Modifié
+
+**uploader/selenium_uploader.py**
+- Intégration du `CookieManager`
+- Méthode `load_cookies()` améliorée (supporte JSON et pickle)
+- Méthode `save_cookies()` avec backup JSON automatique
+- Logs améliorés avec comptage de cookies
+
+**config.py**
+- Lecture de `TARGET_CREATORS` depuis `.env`
+- Fallback automatique vers valeurs par défaut
+- Support de la liste séparée par virgules
+
+**README.md**
+- Section "Import de Cookies JSON" ajoutée
+- Section "Configuration via .env" ajoutée
+- Nouvelles fonctionnalités mises en avant
+
+#### 📊 Avantages
+
+**Import de Cookies**
+- ✨ Plus besoin de connexion manuelle
+- ✨ Exportation depuis n'importe quel navigateur
+- ✨ Connexion plus rapide et fiable
+- ✨ Backup automatique
+
+**Configuration .env**
+- ✨ Changement de créateurs sans modifier le code
+- ✨ Configuration portable
+- ✨ Meilleure séparation des préoccupations
+- ✨ Plus flexible
+
 ## [1.1.0] - 2025-11-05
 
 ### 🎯 Description Complète - Copie Intégrale

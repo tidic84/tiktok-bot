@@ -1,6 +1,7 @@
 """Filtre pour sélectionner les meilleures vidéos"""
 from typing import List, Dict
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -134,4 +135,84 @@ class VideoFilter:
         """
         filtered = self.filter_videos(videos)
         return filtered[:count]
+    
+    def select_best_video_randomly(self, videos: List[Dict], top_n: int = 10) -> Dict:
+        """
+        Sélectionner aléatoirement une vidéo parmi les N meilleures
+        
+        Cette méthode:
+        1. Filtre les vidéos selon les critères de qualité
+        2. Trie par score d'engagement/viralité
+        3. Sélectionne aléatoirement parmi les top_n meilleures
+        
+        Args:
+            videos: Liste de toutes les vidéos récupérées
+            top_n: Nombre de meilleures vidéos parmi lesquelles choisir aléatoirement
+            
+        Returns:
+            Une vidéo sélectionnée aléatoirement parmi les meilleures
+            
+        Raises:
+            ValueError: Si aucune vidéo de qualité n'est trouvée
+        """
+        # Filtrer et trier les vidéos
+        quality_videos = self.filter_videos(videos)
+        
+        if not quality_videos:
+            raise ValueError("Aucune vidéo de qualité trouvée")
+        
+        # Prendre les top_n meilleures
+        top_videos = quality_videos[:min(top_n, len(quality_videos))]
+        
+        # Sélectionner aléatoirement parmi elles
+        selected_video = random.choice(top_videos)
+        
+        logger.info(
+            f"🎲 Vidéo sélectionnée aléatoirement parmi les {len(top_videos)} meilleures: "
+            f"{selected_video['id']} - {selected_video['author']} - "
+            f"{selected_video['views']:,} vues, {selected_video['likes']:,} likes, "
+            f"engagement: {selected_video['engagement_rate']:.2%}, "
+            f"score: {selected_video['virality_score']:.2f}"
+        )
+        
+        return selected_video
+    
+    def get_top_videos_by_creator(self, videos: List[Dict], count_per_creator: int = 3) -> List[Dict]:
+        """
+        Obtenir les meilleures vidéos par créateur pour assurer la diversité
+        
+        Args:
+            videos: Liste de vidéos
+            count_per_creator: Nombre de vidéos max par créateur
+            
+        Returns:
+            Liste des vidéos diversifiées par créateur
+        """
+        # Filtrer d'abord
+        filtered = self.filter_videos(videos)
+        
+        # Grouper par créateur
+        by_creator = {}
+        for video in filtered:
+            author = video.get('author', 'unknown')
+            if author not in by_creator:
+                by_creator[author] = []
+            by_creator[author].append(video)
+        
+        # Prendre count_per_creator vidéos de chaque créateur
+        result = []
+        for author, author_videos in by_creator.items():
+            # Trier par score pour ce créateur
+            author_videos.sort(key=lambda v: v['virality_score'], reverse=True)
+            result.extend(author_videos[:count_per_creator])
+        
+        # Re-trier globalement par score
+        result.sort(key=lambda v: v['virality_score'], reverse=True)
+        
+        logger.info(
+            f"✓ {len(result)} vidéos sélectionnées de {len(by_creator)} créateurs "
+            f"(max {count_per_creator} par créateur)"
+        )
+        
+        return result
 

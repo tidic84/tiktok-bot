@@ -18,6 +18,10 @@ Bot Python automatisé qui récupère les vidéos TikTok les plus virales et les
 - ✅ Upload automatique via Selenium
 - ✅ **Copie COMPLÈTE des descriptions originales avec tous les hashtags** 🆕
 - ✅ Insertion robuste avec fallback JavaScript pour les textes longs 🆕
+- ✅ **Import de cookies depuis JSON** (facilite la connexion) 🆕
+- ✅ **Configuration des créateurs via .env** (personnalisation facile) 🆕
+- ✅ **Sélection intelligente des vidéos** (meilleur engagement) 🆕
+- ✅ **Retraitement automatique** (vidéos non uploadées peuvent être retentées) 🆕
 - ✅ Base de données SQLite pour éviter les doublons
 - ✅ Rate limiting intelligent pour éviter les bans
 - ✅ Simulation de comportement humain (délais aléatoires, heures d'activité)
@@ -261,6 +265,133 @@ Ce script récupère quelques vidéos et affiche les descriptions complètes pou
 ### 📖 Documentation Complète
 
 Consultez `DESCRIPTION_COMPLETE.md` pour tous les détails techniques.
+
+## 🍪 Import de Cookies JSON - Nouvelle Fonctionnalité
+
+### ✨ Connexion Simplifiée
+
+Le bot supporte maintenant l'import de cookies depuis un fichier JSON !
+
+**Avantages** :
+- ✅ Pas de connexion manuelle nécessaire
+- ✅ Exportez vos cookies depuis n'importe quel navigateur
+- ✅ Backup automatique en JSON et pickle
+- ✅ Plus rapide et plus fiable
+
+### 🚀 Utilisation Rapide
+
+1. **Exportez vos cookies** depuis votre navigateur (extension Cookie-Editor)
+2. **Sauvegardez** le fichier JSON dans le projet
+3. **Importez** avec la commande :
+
+```bash
+python import_cookies.py tiktok_cookies.json
+```
+
+4. **Lancez le bot** normalement :
+
+```bash
+python main.py
+```
+
+Le bot se connectera automatiquement avec vos cookies !
+
+### 📖 Guide Complet
+
+Consultez `GUIDE_COOKIES_JSON.md` pour le guide détaillé.
+
+## ⚙️ Configuration via .env - Nouvelle Fonctionnalité
+
+### ✨ Personnalisation Facile
+
+Configurez vos créateurs TikTok dans un fichier `.env` !
+
+**Avantages** :
+- ✅ Changez les créateurs sans modifier le code
+- ✅ Configuration portable et partageable
+- ✅ Identifiants séparés du code
+- ✅ Ajoutez autant de créateurs que vous voulez
+
+### 🚀 Utilisation Rapide
+
+1. **Copiez** le fichier exemple :
+
+```bash
+cp env.example .env
+```
+
+2. **Éditez** le fichier `.env` :
+
+```env
+TIKTOK_USERNAME=votre_username
+TIKTOK_PASSWORD=votre_mot_de_passe
+TARGET_CREATORS=aflavorfulbite,joandbart,feelgoodfoodie,cookingwithshereen
+```
+
+3. **Lancez le bot** :
+
+```bash
+python main.py
+```
+
+Le bot utilisera automatiquement vos créateurs configurés !
+
+### 📖 Guide Complet
+
+Consultez `GUIDE_CONFIGURATION_ENV.md` pour le guide détaillé.
+
+## 🎯 Sélection Intelligente des Vidéos - Nouvelle Fonctionnalité
+
+### ✨ Meilleur Engagement Automatique
+
+Le bot utilise maintenant un système intelligent qui sélectionne automatiquement la meilleure vidéo !
+
+**Comment ça marche** :
+1. 📥 Récupère toutes les vidéos des créateurs
+2. 📊 Calcule un score de viralité pour chaque vidéo
+3. 🎯 Sélectionne aléatoirement parmi les N meilleures
+4. 🚀 Upload seulement la meilleure vidéo
+
+**Avantages** :
+- ✅ Qualité maximale garantie
+- ✅ Diversité (sélection aléatoire dans le top)
+- ✅ Efficacité (1 vidéo par cycle)
+- ✅ Retraitement possible (vidéos non uploadées)
+
+### 🔄 Retraitement Automatique
+
+**Logique intelligente** :
+- ✅ **Vidéos uploadées** → Ne seront JAMAIS republiées
+- ✅ **Vidéos non uploadées** → Peuvent être retraitées au prochain cycle
+- ✅ **Nettoyage automatique** → Anciennes vidéos en attente supprimées après 7 jours
+
+### 📊 Score de Viralité
+
+```
+Score = (taux_engagement × 100) + (likes / 10000) + (shares / 1000)
+
+Où:
+  taux_engagement = (likes + commentaires + partages) / vues
+```
+
+**Exemple** :
+```
+Vidéo avec 2.5M vues, 350K likes, 8K commentaires, 15K partages
+Score = 64.92 ⭐⭐⭐⭐⭐ (Excellent!)
+```
+
+### ⚙️ Configuration
+
+```python
+# Dans config.py
+SMART_SELECTION = True  # Activer la sélection intelligente
+TOP_N_SELECTION = 10    # Choisir parmi les 10 meilleures
+CLEANUP_PENDING_VIDEOS_DAYS = 7  # Nettoyage après 7 jours
+```
+
+### 📖 Guide Complet
+
+Consultez `GUIDE_SELECTION_INTELLIGENTE.md` pour tous les détails.
 
 ## 📈 Améliorations Futures
 

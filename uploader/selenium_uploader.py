@@ -15,6 +15,8 @@ import logging
 import time
 import random
 
+from uploader.cookie_manager import CookieManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,7 @@ class SeleniumUploader:
         self.driver = None
         self.is_logged_in = False
         self.cookies_file = Path(config.COOKIES_FILE)
+        self.cookie_manager = CookieManager(config.COOKIES_FILE)
         logger.info("SeleniumUploader initialisé")
     
     def initialize_browser(self):
@@ -80,31 +83,43 @@ class SeleniumUploader:
             return False
     
     def save_cookies(self):
-        """Sauvegarder les cookies de session"""
+        """Sauvegarder les cookies de session (pickle + JSON backup)"""
         try:
             cookies = self.driver.get_cookies()
-            with open(self.cookies_file, 'wb') as f:
-                pickle.dump(cookies, f)
-            logger.info("Cookies sauvegardés")
+            # Sauvegarder en pickle
+            self.cookie_manager.save_cookies_to_pickle(cookies)
+            # Backup en JSON
+            self.cookie_manager.save_cookies_to_json(cookies)
+            logger.info("✓ Cookies sauvegardés (pickle + JSON backup)")
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde des cookies: {e}")
     
     def load_cookies(self):
-        """Charger les cookies de session"""
+        """Charger les cookies de session (pickle ou JSON)"""
         try:
-            if self.cookies_file.exists():
-                self.driver.get('https://www.tiktok.com')
-                time.sleep(2)
-                
-                with open(self.cookies_file, 'rb') as f:
-                    cookies = pickle.load(f)
-                
-                for cookie in cookies:
+            # Récupérer les cookies (essaie pickle puis JSON)
+            cookies = self.cookie_manager.get_cookies()
+            
+            if not cookies:
+                logger.info("Aucun cookie trouvé")
+                return False
+            
+            # Aller sur TikTok avant d'ajouter les cookies
+            self.driver.get('https://www.tiktok.com')
+            time.sleep(2)
+            
+            # Ajouter chaque cookie
+            added_count = 0
+            for cookie in cookies:
+                try:
                     self.driver.add_cookie(cookie)
-                
-                logger.info("Cookies chargés")
-                return True
-            return False
+                    added_count += 1
+                except Exception as e:
+                    logger.debug(f"Impossible d'ajouter le cookie {cookie.get('name', 'unknown')}: {e}")
+            
+            logger.info(f"✓ {added_count}/{len(cookies)} cookies chargés")
+            return added_count > 0
+            
         except Exception as e:
             logger.error(f"Erreur lors du chargement des cookies: {e}")
             return False
