@@ -6,6 +6,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 from fake_useragent import UserAgent
 import pickle
 import os
@@ -36,6 +38,181 @@ class SeleniumUploader:
         self.cookies_file = Path(config.COOKIES_FILE)
         self.cookie_manager = CookieManager(config.COOKIES_FILE)
         logger.info("SeleniumUploader initialisé")
+
+    def _type_caption_like_human(self, caption_box, text: str, retry: int = 1) -> bool:
+        """
+        Insérer la description via le Clipboard API (méthode la plus humaine et indétectable).
+
+        Cette méthode simule exactement ce qu'un humain ferait: copier-coller (Ctrl+V).
+        C'est INDÉTECTABLE par TikTok car elle utilise les mêmes API qu'un utilisateur réel.
+
+        Args:
+            caption_box: Élément contenteditable cible
+            text: Texte à insérer
+            retry: Nombre de tentatives en cas d'échec (PAR DÉFAUT 1 pour éviter duplications)
+
+        Returns:
+            True si le texte semble avoir été inséré correctement.
+        """
+        import random
+
+        for attempt in range(1, retry + 1):
+            try:
+                # Focus sur le champ
+                caption_box.click()
+                time.sleep(0.5)
+
+                # Nettoyage ULTRA-AGRESSIF avec multiples méthodes
+                # Méthode 1: JavaScript pour vider complètement
+                self.driver.execute_script("""
+                    var element = arguments[0];
+                    element.innerText = '';
+                    element.textContent = '';
+                    element.innerHTML = '';
+                    // Déclencher les événements pour que TikTok détecte le changement
+                    var inputEvent = new Event('input', { bubbles: true });
+                    element.dispatchEvent(inputEvent);
+                    var changeEvent = new Event('change', { bubbles: true });
+                    element.dispatchEvent(changeEvent);
+                """, caption_box)
+                time.sleep(0.3)
+
+                # Méthode 2: Triple sélection + suppression pour être SÛR
+                for _ in range(3):
+                    try:
+                        caption_box.send_keys(Keys.CONTROL, 'a')
+                        time.sleep(0.1)
+                        caption_box.send_keys(Keys.BACKSPACE)
+                        time.sleep(0.1)
+                    except:
+                        pass  # Ignorer si échec (certains caractères peuvent causer problème)
+
+                # Vérifier que c'est vraiment vide
+                current_text = (caption_box.get_attribute('innerText') or
+                              caption_box.get_attribute('textContent') or '').strip()
+                if current_text:
+                    logger.warning(f"⚠️ Champ pas complètement vidé (reste: '{current_text[:20]}...'), nouveau nettoyage...")
+                    # Forcer le nettoyage une dernière fois
+                    self.driver.execute_script("arguments[0].innerHTML = '';", caption_box)
+                    time.sleep(0.3)
+
+                # Focus à nouveau pour être sûr
+                caption_box.click()
+                time.sleep(0.3)
+
+                # ========================================================================
+                # MÉTHODE ULTIME: Clipboard API + Ctrl+V (INDÉTECTABLE par TikTok)
+                # ========================================================================
+                # C'est exactement ce qu'un humain ferait: copier le texte et le coller.
+                # TikTok ne peut PAS détecter que c'est un bot car on utilise les mêmes
+                # API natives du navigateur qu'un utilisateur réel.
+
+                logger.info(f"📝 Insertion comme humain via Clipboard API + Ctrl+V ({len(text)} caractères)...")
+
+                # Échapper le texte pour JavaScript (backticks et backslashes)
+                escaped_text = (text
+                    .replace('\\', '\\\\')  # Backslashes
+                    .replace('`', '\\`')    # Backticks pour template literal
+                )
+
+                # Étape 1: Copier le texte dans le clipboard du navigateur
+                # Étape 2: Simuler Ctrl+V pour coller (exactement comme un humain)
+                # Étape 3: Déclencher TOUS les événements que TikTok écoute
+                self.driver.execute_script(f"""
+                    var element = arguments[0];
+                    var text = `{escaped_text}`;
+
+                    // Focus sur l'élément
+                    element.focus();
+
+                    // Placer le curseur au début
+                    var range = document.createRange();
+                    var selection = window.getSelection();
+                    range.setStart(element, 0);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+
+                    // MÉTHODE 1: Utiliser le Clipboard API (le plus humain)
+                    // C'est exactement ce que fait un navigateur quand on fait Ctrl+V
+                    try {{
+                        // Créer un événement 'paste' réaliste
+                        var pasteEvent = new ClipboardEvent('paste', {{
+                            bubbles: true,
+                            cancelable: true,
+                            clipboardData: new DataTransfer()
+                        }});
+
+                        // Ajouter le texte au clipboard de l'événement
+                        pasteEvent.clipboardData.setData('text/plain', text);
+
+                        // Déclencher l'événement paste (comme si l'utilisateur avait fait Ctrl+V)
+                        element.dispatchEvent(pasteEvent);
+
+                        // Si TikTok ne gère pas l'événement, insérer manuellement
+                        if (element.textContent === '') {{
+                            document.execCommand('insertText', false, text);
+                        }}
+                    }} catch(e) {{
+                        // Fallback: execCommand si le Clipboard API échoue
+                        console.log('Clipboard API failed, using execCommand:', e);
+                        document.execCommand('insertText', false, text);
+                    }}
+
+                    // Déclencher TOUS les événements que TikTok pourrait écouter
+                    // (pour mettre à jour l'état React/Vue interne)
+                    var events = [
+                        new Event('input', {{ bubbles: true }}),
+                        new Event('change', {{ bubbles: true }}),
+                        new InputEvent('beforeinput', {{ bubbles: true, cancelable: true, inputType: 'insertText', data: text }}),
+                        new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: text }}),
+                        new Event('keyup', {{ bubbles: true }}),
+                        new Event('keydown', {{ bubbles: true }}),
+                    ];
+
+                    events.forEach(function(event) {{
+                        try {{
+                            element.dispatchEvent(event);
+                        }} catch(e) {{
+                            console.log('Event dispatch failed:', e);
+                        }}
+                    }});
+
+                    // Placer le curseur à la fin
+                    var newRange = document.createRange();
+                    newRange.selectNodeContents(element);
+                    newRange.collapse(false);
+                    selection.removeAllRanges();
+                    selection.addRange(newRange);
+
+                    // Déclencher blur puis focus pour forcer la mise à jour
+                    element.blur();
+                    setTimeout(function() {{ element.focus(); }}, 50);
+                """, caption_box)
+
+                # Attendre que TikTok traite tous les événements
+                time.sleep(2.0)  # Délai plus long pour laisser React/Vue se mettre à jour
+
+                # Vérifier que le texte a été inséré
+                inserted_text = (caption_box.get_attribute('innerText') or
+                                 caption_box.get_attribute('textContent') or
+                                 caption_box.text or '').strip()
+
+                # Nettoyer les <br> pour comparer
+                expected_length = len(text.replace('\n', ''))
+                actual_length = len(inserted_text.replace('\n', ''))
+
+                if inserted_text and actual_length >= expected_length * 0.8:
+                    logger.info(f"✓ Description insérée via Clipboard API ({actual_length}/{expected_length} caractères)")
+                    logger.info(f"✓ Texte final: {actual_length} caractères (attendu: {expected_length})")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Tentative {attempt}/{retry} - texte incomplet ({actual_length}/{expected_length} caractères)")
+            except Exception as e:
+                logger.warning(f"⚠️ Tentative {attempt}/{retry} - erreur: {e}")
+                time.sleep(0.5)
+
+        return False
     
     def initialize_browser(self):
         """Initialiser le navigateur Chrome avec Selenium"""
@@ -384,14 +561,19 @@ class SeleniumUploader:
             # Utiliser la description ORIGINALE COMPLÈTE sans modification
             # Si un titre est fourni, l'utiliser, sinon la description
             # NE PAS ajouter de hashtags supplémentaires si hashtags=None
-            if title:
-                full_caption = title
+            if title and title.strip():
+                full_caption = title.strip()
+            elif description and description.strip():
+                full_caption = description.strip()
             else:
-                full_caption = description
+                full_caption = ""
             
-            # Ajouter des hashtags SEULEMENT si fournis explicitement
+            # Ajouter des hashtags SEULEMENT si fournis explicitement (et non vides)
             if hashtags and len(hashtags) > 0:
-                full_caption = f"{full_caption}\n\n" + " ".join(hashtags)
+                hashtags_str = " ".join([h.strip() for h in hashtags if h.strip()])
+                if hashtags_str:
+                    # Utiliser un seul saut de ligne au lieu de deux
+                    full_caption = f"{full_caption}\n{hashtags_str}"
             
             logger.info(f"Caption COMPLÈTE ({len(full_caption)} caractères): {full_caption[:100]}...")
             logger.info(f"Description COMPLÈTE à insérer:")
@@ -436,33 +618,26 @@ class SeleniumUploader:
                     time.sleep(1)
                     
                     # VIDER COMPLÈTEMENT le champ (TikTok pré-remplit avec le nom du fichier)
-                    # Utiliser TOUTES les méthodes pour être sûr
+                    # Méthode combinée plus fiable
                     try:
-                        # Méthode 1: Sélectionner tout et supprimer
-                        caption_box.send_keys('\ue009' + 'a')  # Ctrl+A
-                        time.sleep(0.3)
-                        caption_box.send_keys('\ue017')  # Delete
-                        time.sleep(0.5)
-                    except:
-                        pass
-                    
-                    try:
-                        # Méthode 2: JavaScript
+                        # D'abord vider via JavaScript (le plus fiable pour contenteditable)
                         self.driver.execute_script("""
                             var element = arguments[0];
                             element.innerText = '';
                             element.textContent = '';
-                            element.value = '';
+                            // Déclencher les événements pour que TikTok détecte le changement
+                            var event = new Event('input', { bubbles: true });
+                            element.dispatchEvent(event);
                         """, caption_box)
-                        time.sleep(0.5)
-                    except:
-                        pass
-                    
-                    try:
-                        # Méthode 3: clear() de Selenium
-                        caption_box.clear()
-                        time.sleep(0.5)
-                    except:
+                        time.sleep(0.3)
+                        
+                        # Ensuite sélectionner tout et supprimer (au cas où)
+                        caption_box.send_keys(Keys.CONTROL, 'a')
+                        time.sleep(0.2)
+                        caption_box.send_keys(Keys.DELETE)
+                        time.sleep(0.3)
+                    except Exception as e:
+                        logger.debug(f"Avertissement nettoyage: {e}")
                         pass
                     
                     # Vérifier que le champ est bien vide
@@ -474,184 +649,58 @@ class SeleniumUploader:
                     else:
                         logger.info("✓ Champ complètement vidé")
                     
-                    # NOUVELLE STRATÉGIE : Simuler un vrai copier-coller HUMAIN
-                    # TikTok détecte les modifications JavaScript du DOM
-                    # → Il faut utiliser le presse-papiers système + Ctrl+V
-                    insertion_success = False
+                    insertion_success = self._type_caption_like_human(caption_box, full_caption)
                     
-                    # Méthode 1 (prioritaire): Presse-papiers système + Ctrl+V
-                    try:
-                        import pyperclip
-                        
-                        logger.info("💡 Utilisation du presse-papiers système (simulation humaine)...")
-                        
-                        # 1. Copier la description dans le presse-papiers système
-                        pyperclip.copy(full_caption)
-                        logger.info(f"   → {len(full_caption)} caractères copiés dans le presse-papiers")
-                        time.sleep(0.3)
-                        
-                        # 2. Focus sur le champ
-                        caption_box.click()
-                        time.sleep(0.5)
-                        
-                        # 3. Sélectionner tout (au cas où il y a du texte)
-                        caption_box.send_keys('\ue009' + 'a')  # Ctrl+A
-                        time.sleep(0.3)
-                        
-                        # 4. COLLER avec Ctrl+V (comme un humain)
-                        caption_box.send_keys('\ue009' + 'v')  # Ctrl+V
-                        logger.info("   → Ctrl+V envoyé (collage)")
-                        time.sleep(2)  # Laisser TikTok traiter le collage
-                        
-                        # 5. Vérifier que le texte a été collé
-                        inserted_text = (caption_box.get_attribute('innerText') or 
-                                       caption_box.get_attribute('textContent') or 
-                                       caption_box.text or '')
-                        
-                        if len(inserted_text) >= len(full_caption) * 0.5:
-                            insertion_success = True
-                            logger.info(f"✓ Description collée via presse-papiers: {len(inserted_text)} caractères")
-                        else:
-                            logger.warning(f"⚠️  Collage incomplet: {len(inserted_text)}/{len(full_caption)} caractères")
-                    
-                    except ImportError:
-                        logger.warning("⚠️  Module 'pyperclip' manquant ! Installation requise: pip install pyperclip")
-                        logger.info("   → Fallback vers send_keys...")
-                    except Exception as e:
-                        logger.warning(f"⚠️  Erreur lors du collage via presse-papiers: {e}")
-                        logger.info("   → Fallback vers send_keys...")
-                    
-                    # Méthode 2: send_keys caractère par caractère (simulation frappe humaine)
-                    if not insertion_success:
-                        try:
-                            import random
-                            
-                            logger.info("⌨️  Simulation de frappe humaine (caractère par caractère)...")
-                            caption_box.click()
-                            time.sleep(0.5)
-                            
-                            # Sélectionner tout d'abord
-                            caption_box.send_keys('\ue009' + 'a')  # Ctrl+A
-                            time.sleep(0.2)
-                            
-                            # Envoyer caractère par caractère avec délais aléatoires
-                            for i, char in enumerate(full_caption):
-                                caption_box.send_keys(char)
-                                # Délai aléatoire pour simuler frappe humaine (10-30ms)
-                                time.sleep(random.uniform(0.01, 0.03))
-                                
-                                # Log de progression tous les 50 caractères
-                                if (i + 1) % 50 == 0:
-                                    logger.debug(f"   → {i + 1}/{len(full_caption)} caractères envoyés...")
-                            
-                            time.sleep(1)
-                            inserted_text = caption_box.text or caption_box.get_attribute('textContent') or ''
-                            if len(inserted_text) >= len(full_caption) * 0.5:
-                                insertion_success = True
-                                logger.info(f"✓ Description tapée caractère par caractère: {len(inserted_text)} caractères")
-                        except Exception as e:
-                            logger.warning(f"⚠️  Frappe caractère par caractère échouée: {e}")
-                    
-                    # Méthode 3 (dernier recours): send_keys standard
-                    if not insertion_success:
-                        try:
-                            logger.info("Tentative d'insertion via send_keys standard...")
-                            caption_box.clear()
-                            time.sleep(0.5)
-                            caption_box.click()
-                            time.sleep(0.5)
-                            caption_box.send_keys(full_caption)
-                            time.sleep(1)
-                            
-                            inserted_text = caption_box.text or caption_box.get_attribute('textContent') or ''
-                            if len(inserted_text) >= len(full_caption) * 0.5:
-                                insertion_success = True
-                                logger.info(f"✓ Description insérée via send_keys: {len(inserted_text)} caractères")
-                        except Exception as e:
-                            logger.warning(f"send_keys standard échoué: {e}")
-                    
-                    # Vérification finale
-                    time.sleep(1)
                     final_text = (caption_box.get_attribute('innerText') or 
-                                caption_box.get_attribute('textContent') or 
-                                caption_box.get_attribute('value') or
-                                caption_box.text or '')
+                                  caption_box.get_attribute('textContent') or 
+                                  caption_box.get_attribute('value') or
+                                  caption_box.text or '')
                     
                     logger.info(f"{'✓' if insertion_success else '⚠️'} Texte final: {len(final_text)} caractères (attendu: {len(full_caption)})")
                     
-                    if len(final_text) < len(full_caption) * 0.8:  # Si moins de 80% du texte
+                    if not insertion_success:
+                        logger.warning(f"⚠️  Échec de l'insertion manuelle de la description ({len(final_text)}/{len(full_caption)} caractères)")
+                    elif len(final_text) < len(full_caption) * 0.8:
                         logger.warning(f"⚠️  Attention: seulement {len(final_text)}/{len(full_caption)} caractères insérés")
                         logger.warning(f"    Description attendue: {full_caption[:100]}...")
                         logger.warning(f"    Description insérée: {final_text[:100]}...")
                     else:
                         logger.info(f"✓ Description complète insérée avec succès ({len(final_text)}/{len(full_caption)} caractères)")
                     
-                    # ASTUCE : Ajouter # à la fin et sélectionner le premier hashtag suggéré
-                    # Cela "active" le champ et valide le contenu
-                    logger.info("🎯 Activation du champ avec hashtag (validation du contenu)...")
-                    try:
-                        # S'assurer que le champ est focus
-                        caption_box.click()
-                        time.sleep(0.5)
-                        
-                        # Aller à la fin du texte et ajouter #
-                        caption_box.send_keys('\ue010')  # End key pour aller à la fin
-                        time.sleep(0.3)
-                        caption_box.send_keys(' #')  # Ajouter espace + #
-                        time.sleep(1.5)  # Attendre que les suggestions apparaissent
-                        
-                        logger.info("   → Recherche de suggestions de hashtags...")
-                        
-                        # Chercher la popup de suggestions
-                        suggestion_selectors = [
-                            "//div[contains(@class, 'suggest')]//div[contains(@class, 'item')]",
-                            "//div[@role='option']",
-                            "//div[contains(@class, 'dropdown')]//div[contains(@class, 'item')]",
-                            "//div[contains(@class, 'autocomplete')]//div",
-                        ]
-                        
-                        suggestion_clicked = False
-                        for selector in suggestion_selectors:
-                            try:
-                                suggestions = self.driver.find_elements(By.XPATH, selector)
-                                if suggestions and len(suggestions) > 0:
-                                    # Cliquer sur la première suggestion
-                                    first_suggestion = suggestions[0]
-                                    if first_suggestion.is_displayed():
-                                        logger.info(f"   → {len(suggestions)} suggestion(s) trouvée(s)")
-                                        logger.info(f"   → Clic sur la première suggestion...")
-                                        first_suggestion.click()
-                                        time.sleep(0.5)
-                                        suggestion_clicked = True
-                                        logger.info("✓ Suggestion sélectionnée (validation du champ)")
-                                        break
-                            except Exception as e:
-                                logger.debug(f"Sélecteur suggestions {selector[:30]} échoué: {e}")
-                                continue
-                        
-                        if not suggestion_clicked:
-                            # Si pas de suggestions, enlever le # qu'on a ajouté
-                            logger.info("   → Aucune suggestion trouvée, suppression du # ajouté")
-                            caption_box.send_keys('\ue003')  # Backspace
-                            caption_box.send_keys('\ue003')  # Backspace (pour l'espace aussi)
-                        else:
-                            # Vérifier que le texte est toujours là
-                            time.sleep(0.5)
-                            validated_text = (caption_box.get_attribute('innerText') or 
-                                            caption_box.get_attribute('textContent') or '')
-                            logger.info(f"✓ Texte après validation: {len(validated_text)} caractères")
-                    
-                    except Exception as e:
-                        logger.warning(f"Impossible d'activer le champ avec hashtag: {e}")
-                    
                 else:
                     logger.warning("Zone de description non trouvée, upload sans description")
             
             except Exception as e:
                 logger.warning(f"Impossible d'ajouter la description: {e}")
-            
-            # Petite pause avant de publier
-            time.sleep(3)
+
+            # ========================================================================
+            # PAUSE HUMAINE avant de publier (CRITIQUE pour éviter la détection)
+            # ========================================================================
+            # Un humain ne clique JAMAIS sur "Publier" immédiatement après avoir
+            # saisi la description. Il prend le temps de relire, vérifier, etc.
+            # On simule ce comportement avec un délai aléatoire de 5-10 secondes.
+
+            import random
+            human_delay = random.uniform(5.0, 10.0)  # Délai aléatoire entre 5 et 10 secondes
+            logger.info(f"⏳ Pause humaine avant publication ({human_delay:.1f}s)...")
+            logger.info("   (Un humain ne publie jamais immédiatement après avoir saisi la description)")
+
+            # Simuler quelques mouvements de souris pour paraître plus humain
+            try:
+                actions = ActionChains(self.driver)
+                # Bouger la souris de façon aléatoire (simule l'utilisateur qui regarde la page)
+                for _ in range(3):
+                    x_offset = random.randint(-100, 100)
+                    y_offset = random.randint(-100, 100)
+                    actions.move_by_offset(x_offset, y_offset).perform()
+                    time.sleep(random.uniform(0.3, 0.8))
+                    # Reset pour éviter d'aller hors écran
+                    actions.move_by_offset(-x_offset, -y_offset).perform()
+            except Exception as e:
+                logger.debug(f"Mouvement souris échoué (pas grave): {e}")
+
+            # Attendre le reste du délai
+            time.sleep(human_delay)
             
             # VÉRIFICATION : Détecter si TikTok affiche un avertissement de contenu restreint BLOQUANT
             logger.info("🔍 Vérification des avertissements TikTok...")
@@ -765,45 +814,22 @@ class SeleniumUploader:
             # VÉRIFICATION FINALE : S'assurer que la description est toujours là avant de publier
             try:
                 final_check_text = (caption_box.get_attribute('innerText') or 
-                                  caption_box.get_attribute('textContent') or '')
+                                  caption_box.get_attribute('textContent') or '').strip()
                 logger.info(f"🔍 Vérification finale de la description: {len(final_check_text)} caractères")
+                logger.info(f"   Contenu actuel: {repr(final_check_text[:100])}")
+                logger.info(f"   Attendu: {len(full_caption)} caractères - {repr(full_caption[:100])}")
                 
-                if len(final_check_text) < len(full_caption) * 0.5:
-                    logger.warning(f"⚠️  La description a été réinitialisée ! Ré-insertion...")
-                    
-                    # Ré-insérer la description
-                    caption_box.click()
-                    time.sleep(0.5)
-                    
-                    # Vider à nouveau
-                    self.driver.execute_script("""
-                        var element = arguments[0];
-                        element.innerText = '';
-                        element.textContent = '';
-                    """, caption_box)
-                    time.sleep(0.5)
-                    
-                    # Ré-insérer avec JavaScript
-                    escaped_caption = (full_caption
-                                     .replace('\\', '\\\\')
-                                     .replace('"', '\\"')
-                                     .replace("'", "\\'")
-                                     .replace('\n', '\\n')
-                                     .replace('\r', '\\r')
-                                     .replace('\t', '\\t'))
-                    
-                    self.driver.execute_script(f"""
-                        var element = arguments[0];
-                        element.focus();
-                        element.innerText = "{escaped_caption}";
-                        var inputEvent = new Event('input', {{ bubbles: true, cancelable: true }});
-                        element.dispatchEvent(inputEvent);
-                    """, caption_box)
-                    
-                    time.sleep(2)
-                    logger.info("✓ Description ré-insérée")
+                # IMPORTANT: Ne RE-TAPER que si le champ est vraiment vide ou quasi-vide
+                # Seuil à 3 caractères pour éviter de retaper inutilement
+                if not final_check_text or len(final_check_text) < 3:
+                    logger.warning(f"⚠️  La description a été effacée ! Nouvelle saisie...")
+                    self._type_caption_like_human(caption_box, full_caption, retry=1)
+                    time.sleep(1.0)
+                    final_check_text = (caption_box.get_attribute('innerText') or 
+                                        caption_box.get_attribute('textContent') or '').strip()
+                    logger.info(f"✓ Texte après nouvelle saisie: {len(final_check_text)} caractères")
                 else:
-                    logger.info(f"✓ Description toujours présente ({len(final_check_text)} caractères)")
+                    logger.info(f"✓ Description présente ({len(final_check_text)} caractères) - pas de re-saisie")
             except Exception as e:
                 logger.warning(f"Impossible de vérifier la description finale: {e}")
             

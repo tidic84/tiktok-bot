@@ -13,9 +13,9 @@ class Config:
     TIKTOK_PASSWORD = os.getenv('TIKTOK_PASSWORD', '')
     
     # Critères de sélection des vidéos (RÉDUITS pour avoir plus de résultats)
-    MIN_LIKES = 5000  # Réduit de 10000
-    MIN_VIEWS = 50000  # Réduit de 100000
-    MIN_ENGAGEMENT_RATE = 0.03  # 3% (réduit de 5%)
+    MIN_LIKES = int(os.getenv('MIN_LIKES', 500))  # Réduit de 50000
+    MIN_VIEWS = int(os.getenv('MIN_VIEWS', 1000))  # Réduit de 100000
+    MIN_ENGAGEMENT_RATE = float(os.getenv('MIN_ENGAGEMENT_RATE', 0.03))  # 3% (réduit de 5%)
     
     # Mots-clés/hashtags ciblés pour la recherche (utilisé si SCRAPING_MODE = 'search' ou 'api')
     # Peut être des hashtags (avec ou sans #) ou des mots-clés simples
@@ -60,14 +60,14 @@ class Config:
         return self.TARGET_KEYWORDS
     
     # Limites et délais
-    MAX_VIDEOS_PER_DAY = 10
-    MIN_DELAY_BETWEEN_UPLOADS = 3600  # 1 heure en secondes
-    MAX_DELAY_BETWEEN_UPLOADS = 7200  # 2 heures en secondes
-    CHECK_INTERVAL = 7200  # 2 heures entre chaque cycle (TikTok rate limiting)
+    MAX_VIDEOS_PER_DAY = int(os.getenv('MAX_VIDEOS_PER_DAY', 10))
+    MIN_DELAY_BETWEEN_UPLOADS = 7200  # 2 heure en secondes
+    MAX_DELAY_BETWEEN_UPLOADS = 21600  # 6 heures en secondes
+    CHECK_INTERVAL = 25  # 2 heures entre chaque cycle (TikTok rate limiting)
     
     # Heures d'activité (pour paraître humain)
-    ACTIVE_HOURS_START = 0 # 8h du matin
-    ACTIVE_HOURS_END = 24   # 23h le soir
+    ACTIVE_HOURS_START = int(os.getenv('ACTIVE_HOURS_START', 8))  # 8h du matin
+    ACTIVE_HOURS_END = int(os.getenv('ACTIVE_HOURS_END', 23))   # 23h le soir
     
     # Base de données
     DATABASE_URL = 'sqlite:///tiktok_bot.db'
@@ -101,6 +101,9 @@ class Config:
     
     # Gestion des avertissements TikTok
     SKIP_RESTRICTED_CONTENT = True  # Ignorer automatiquement les vidéos avec avertissement de contenu restreint
+    
+    # Gestion des descriptions TikTok
+    MAX_HASHTAGS = int(os.getenv('MAX_HASHTAGS', 5))  # Nombre maximum de hashtags autorisés dans la description
     
     @classmethod
     def create_folders(cls):

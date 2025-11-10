@@ -1,5 +1,5 @@
 """Filtre pour sélectionner les meilleures vidéos"""
-from typing import List, Dict
+from typing import List, Dict, Optional, Set
 import logging
 import random
 
@@ -136,7 +136,12 @@ class VideoFilter:
         filtered = self.filter_videos(videos)
         return filtered[:count]
     
-    def select_best_video_randomly(self, videos: List[Dict], top_n: int = 10) -> Dict:
+    def select_best_video_randomly(
+        self,
+        videos: List[Dict],
+        top_n: int = 10,
+        exclude_ids: Optional[Set[str]] = None
+    ) -> Dict:
         """
         Sélectionner aléatoirement une vidéo parmi les N meilleures
         
@@ -148,6 +153,7 @@ class VideoFilter:
         Args:
             videos: Liste de toutes les vidéos récupérées
             top_n: Nombre de meilleures vidéos parmi lesquelles choisir aléatoirement
+            exclude_ids: Identifiants des vidéos à exclure (déjà uploadées, etc.)
             
         Returns:
             Une vidéo sélectionnée aléatoirement parmi les meilleures
@@ -161,16 +167,46 @@ class VideoFilter:
         if not quality_videos:
             raise ValueError("Aucune vidéo de qualité trouvée")
         
-        # Prendre les top_n meilleures
-        top_videos = quality_videos[:min(top_n, len(quality_videos))]
+        exclude_ids = exclude_ids or set()
         
-        # Sélectionner aléatoirement parmi elles
-        selected_video = random.choice(top_videos)
+        # Construire la liste des vidéos de qualité encore inédites
+        candidate_videos = [video for video in quality_videos if video['id'] not in exclude_ids]
+        
+        if candidate_videos:
+            top_candidates = candidate_videos[:min(top_n, len(candidate_videos))]
+            selected_video = random.choice(top_candidates)
+            
+            logger.info(
+                f"🎲 Vidéo sélectionnée aléatoirement parmi les {len(top_candidates)} meilleures inédites: "
+                f"{selected_video['id']} - {selected_video['author']} - "
+                f"{selected_video['views']:,} vues, {selected_video['likes']:,} likes, "
+                f"engagement: {selected_video['engagement_rate']:.2%}, "
+                f"score: {selected_video['virality_score']:.2f}"
+            )
+            return selected_video
+        
+        # Fallback: sélectionner la vidéo la plus récente non uploadée, même si elle ne respecte pas les critères stricts
+        fallback_candidates = [
+            video for video in videos
+            if video.get('id') and video['id'] not in exclude_ids
+        ]
+        
+        if not fallback_candidates:
+            raise ValueError("Aucune vidéo disponible après exclusion des vidéos déjà uploadées")
+        
+        # Trier par date de création décroissante
+        fallback_candidates.sort(key=lambda v: v.get('create_time', 0) or 0, reverse=True)
+        selected_video = fallback_candidates[0]
+        
+        # Calculer et attacher les métriques si absentes
+        selected_video['engagement_rate'] = self.calculate_engagement_rate(selected_video)
+        selected_video['virality_score'] = self.calculate_virality_score(selected_video)
         
         logger.info(
-            f"🎲 Vidéo sélectionnée aléatoirement parmi les {len(top_videos)} meilleures: "
-            f"{selected_video['id']} - {selected_video['author']} - "
-            f"{selected_video['views']:,} vues, {selected_video['likes']:,} likes, "
+            f"🆕 Aucune vidéo inédite parmi le top {top_n}. "
+            f"Sélection de la vidéo la plus récente non uploadée: "
+            f"{selected_video['id']} - {selected_video.get('author', 'unknown')} - "
+            f"{selected_video.get('views', 0):,} vues, {selected_video.get('likes', 0):,} likes, "
             f"engagement: {selected_video['engagement_rate']:.2%}, "
             f"score: {selected_video['virality_score']:.2f}"
         )
