@@ -61,9 +61,9 @@ class Config:
     
     # Limites et délais
     MAX_VIDEOS_PER_DAY = int(os.getenv('MAX_VIDEOS_PER_DAY', 10))
-    MIN_DELAY_BETWEEN_UPLOADS = 7200  # 2 heure en secondes
+    MIN_DELAY_BETWEEN_UPLOADS = 10800  # 3 heure en secondes
     MAX_DELAY_BETWEEN_UPLOADS = 21600  # 6 heures en secondes
-    CHECK_INTERVAL = 25  # 2 heures entre chaque cycle (TikTok rate limiting)
+    CHECK_INTERVAL = 7200  # 2 heures entre chaque cycle (TikTok rate limiting)
     
     # Heures d'activité (pour paraître humain)
     ACTIVE_HOURS_START = int(os.getenv('ACTIVE_HOURS_START', 8))  # 8h du matin
