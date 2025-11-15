@@ -297,47 +297,7 @@ class VideoDownloader:
             if filepath.exists():
                 filepath.unlink()
             return False
-    
-    def delete_video(self, video_path: str) -> bool:
-        """
-        Supprimer un fichier vidéo
-        
-        Args:
-            video_path: Chemin du fichier à supprimer
-            
-        Returns:
-            True si la suppression a réussi
-        """
-        try:
-            path = Path(video_path)
-            if path.exists():
-                path.unlink()
-                logger.info(f"Vidéo {path.name} supprimée")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Erreur lors de la suppression de {video_path}: {e}")
-            return False
-    
-    def get_video_size(self, video_path: str) -> float:
-        """
-        Obtenir la taille d'une vidéo en MB
-        
-        Args:
-            video_path: Chemin du fichier vidéo
-            
-        Returns:
-            Taille en MB
-        """
-        try:
-            path = Path(video_path)
-            if path.exists():
-                return path.stat().st_size / (1024 * 1024)
-            return 0.0
-        except Exception as e:
-            logger.error(f"Erreur lors de la lecture de la taille: {e}")
-            return 0.0
-    
+
     def cleanup_old_videos(self, keep_count: int = 50):
         """
         Nettoyer les anciennes vidéos pour libérer de l'espace

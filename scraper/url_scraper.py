@@ -96,67 +96,7 @@ class URLScraper:
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des vidéos de @{username}: {e}")
             return videos
-    
-    def get_videos_from_urls(self, urls: List[str]) -> List[Dict]:
-        """
-        Récupérer les métadonnées de vidéos depuis une liste d'URLs
-        
-        Args:
-            urls: Liste d'URLs TikTok
-            
-        Returns:
-            Liste de dictionnaires contenant les données des vidéos
-        """
-        videos = []
-        
-        for url in urls:
-            try:
-                logger.info(f"Récupération des infos pour {url}...")
-                
-                # Commande yt-dlp
-                cmd = [
-                    'yt-dlp',
-                    '--dump-json',
-                    '--no-warnings',
-                    url
-                ]
-                
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                
-                if result.returncode != 0:
-                    logger.warning(f"Impossible de récupérer {url}")
-                    continue
-                
-                video_info = json.loads(result.stdout)
-                # Récupérer la description COMPLÈTE
-                description = video_info.get('description', '')
-                video_data = {
-                    'id': video_info.get('id', ''),
-                    'author': video_info.get('uploader_id', 'unknown'),
-                    'desc': description,  # Description COMPLÈTE avec hashtags originaux
-                    'likes': video_info.get('like_count', 0),
-                    'views': video_info.get('view_count', 0),
-                    'shares': video_info.get('repost_count', 0),
-                    'comments': video_info.get('comment_count', 0),
-                    'video_url': url,
-                    'music': video_info.get('track', None),
-                    'create_time': video_info.get('timestamp', 0)
-                }
-                videos.append(video_data)
-                logger.info(f"✓ Vidéo {video_data['id']} récupérée")
-                
-            except Exception as e:
-                logger.warning(f"Erreur pour {url}: {e}")
-                continue
-        
-        logger.info(f"✓ {len(videos)} vidéos au total")
-        return videos
-    
+
     def get_videos_from_creators(self, creators: List[str], count_per_creator: int = 10) -> List[Dict]:
         """
         Récupérer des vidéos depuis une liste de créateurs
