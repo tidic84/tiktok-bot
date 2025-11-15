@@ -3,6 +3,7 @@ import logging
 from typing import List, Dict
 import instaloader
 import time
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,24 @@ class InstagramScraper:
             compress_json=False,
             quiet=True  # Moins de logs
         )
-        logger.info("InstagramScraper initialisé (instaloader)")
+
+        # Authentification optionnelle pour éviter le rate limiting
+        self.authenticated = False
+        instagram_username = getattr(config, 'INSTAGRAM_USERNAME', None)
+        instagram_password = getattr(config, 'INSTAGRAM_PASSWORD', None)
+
+        if instagram_username and instagram_password:
+            try:
+                logger.info(f"Connexion à Instagram avec le compte: {instagram_username}")
+                self.loader.login(instagram_username, instagram_password)
+                self.authenticated = True
+                logger.info("✓ Authentification Instagram réussie")
+            except Exception as e:
+                logger.warning(f"⚠️  Impossible de se connecter à Instagram: {e}")
+                logger.info("Scraping en mode anonyme (peut être limité)")
+        else:
+            logger.info("InstagramScraper initialisé en mode anonyme (peut être limité par Instagram)")
+            logger.info("Ajoutez INSTAGRAM_USERNAME et INSTAGRAM_PASSWORD dans .env pour éviter les limitations")
 
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """

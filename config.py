@@ -11,6 +11,10 @@ class Config:
     # Credentials TikTok
     TIKTOK_USERNAME = os.getenv('TIKTOK_USERNAME', '')
     TIKTOK_PASSWORD = os.getenv('TIKTOK_PASSWORD', '')
+
+    # Credentials Instagram (optionnel, pour éviter le rate limiting)
+    INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME', '')
+    INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD', '')
     
     # Critères de sélection des vidéos (RÉDUITS pour avoir plus de résultats)
     MIN_LIKES = int(os.getenv('MIN_LIKES', 500))  # Réduit de 50000
