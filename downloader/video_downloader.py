@@ -108,8 +108,9 @@ class VideoDownloader:
             logger.info(f"Vidéo {video_id} déjà téléchargée")
             return str(filepath.absolute())
         
-        # Méthode 1 : Essayer avec yt-dlp (le meilleur pour TikTok)
-        if self._download_with_ytdlp(video_id, author, filepath):
+        # Méthode 1 : Essayer avec yt-dlp (pour TikTok et Instagram)
+        video_url = video_data.get('video_url')
+        if self._download_with_ytdlp(video_id, author, filepath, video_url):
             return str(filepath.absolute())
         
         # Méthode 2 : Fallback avec requests si URL disponible
@@ -120,23 +121,27 @@ class VideoDownloader:
         logger.error(f"Échec du téléchargement de {video_id} avec toutes les méthodes")
         return None
     
-    def _download_with_ytdlp(self, video_id: str, author: str, filepath: Path) -> bool:
+    def _download_with_ytdlp(self, video_id: str, author: str, filepath: Path, video_url: str = None) -> bool:
         """
-        Télécharger avec yt-dlp (RECOMMANDÉ pour TikTok)
-        
+        Télécharger avec yt-dlp (pour TikTok et Instagram)
+
         Args:
             video_id: ID de la vidéo
             author: Auteur de la vidéo
             filepath: Chemin de destination
-            
+            video_url: URL complète de la vidéo (optionnel, sinon construit pour TikTok)
+
         Returns:
             True si succès
         """
         try:
-            # Construire l'URL TikTok
-            tiktok_url = f"https://www.tiktok.com/@{author}/video/{video_id}"
-            
-            logger.info(f"Téléchargement avec yt-dlp: {video_id}...")
+            # Utiliser l'URL fournie ou construire l'URL TikTok
+            if video_url:
+                url = video_url
+                logger.info(f"Téléchargement avec yt-dlp: {video_id} ({url})...")
+            else:
+                url = f"https://www.tiktok.com/@{author}/video/{video_id}"
+                logger.info(f"Téléchargement avec yt-dlp: {video_id}...")
             
             # Commande yt-dlp simple (téléchargement)
             cmd = [
@@ -147,7 +152,7 @@ class VideoDownloader:
                 '-o', str(filepath),
                 '--no-playlist',
                 '--no-check-certificate',
-                tiktok_url
+                url
             ]
             
             # Exécuter la commande

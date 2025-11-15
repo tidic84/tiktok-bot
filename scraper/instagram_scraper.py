@@ -1,8 +1,8 @@
-"""Scraper Instagram utilisant yt-dlp"""
+"""Scraper Instagram utilisant instaloader"""
 import logging
 from typing import List, Dict
-import subprocess
-import json
+import instaloader
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,21 @@ class InstagramScraper:
             config: Objet de configuration
         """
         self.config = config
-        logger.info("InstagramScraper initialisé")
+        self.loader = instaloader.Instaloader(
+            download_pictures=False,
+            download_videos=False,
+            download_video_thumbnails=False,
+            download_geotags=False,
+            download_comments=False,
+            save_metadata=False,
+            compress_json=False,
+            quiet=True  # Moins de logs
+        )
+        logger.info("InstagramScraper initialisé (instaloader)")
 
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """
-        Récupérer les vidéos d'un utilisateur Instagram via yt-dlp
+        Récupérer les vidéos d'un utilisateur Instagram via instaloader
 
         Args:
             username: Nom d'utilisateur Instagram (sans @)
@@ -36,67 +46,57 @@ class InstagramScraper:
         try:
             logger.info(f"Récupération des vidéos Instagram de @{username}...")
 
-            # URL du profil Instagram
-            profile_url = f"https://www.instagram.com/{username}/"
+            # Charger le profil
+            profile = instaloader.Profile.from_username(self.loader.context, username)
 
-            # Commande yt-dlp pour récupérer les métadonnées sans télécharger
-            # Instagram nécessite parfois des cookies ou des user-agents spécifiques
-            cmd = [
-                'yt-dlp',
-                '--dump-json',  # Sortie JSON
-                '--playlist-end', str(count),  # Limiter le nombre de vidéos
-                '--no-warnings',
-                '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                profile_url
-            ]
+            # Parcourir les posts (limité à count vidéos)
+            video_count = 0
+            for post in profile.get_posts():
+                # Ne garder que les vidéos (Reels ou IGTV)
+                if post.is_video:
+                    try:
+                        # Calculer le taux d'engagement
+                        engagement_rate = 0.0
+                        if post.video_view_count and post.video_view_count > 0:
+                            interactions = post.likes + post.comments
+                            engagement_rate = interactions / post.video_view_count
 
-            # Exécuter la commande
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=90
-            )
+                        video_data = {
+                            'id': post.shortcode,
+                            'author': username,
+                            'desc': post.caption or '',  # Description avec hashtags
+                            'likes': post.likes,
+                            'views': post.video_view_count or 0,
+                            'shares': 0,  # Instagram ne fournit pas cette donnée
+                            'comments': post.comments,
+                            'video_url': f"https://www.instagram.com/p/{post.shortcode}/",
+                            'music': None,
+                            'create_time': int(post.date_utc.timestamp()),
+                            'platform': 'instagram',
+                            'engagement_rate': engagement_rate
+                        }
+                        videos.append(video_data)
+                        video_count += 1
 
-            if result.returncode != 0:
-                logger.error(f"Erreur yt-dlp pour @{username}: {result.stderr}")
-                return videos
+                        if video_count >= count:
+                            break
 
-            # Parser chaque ligne JSON (une vidéo par ligne)
-            for line in result.stdout.strip().split('\n'):
-                if not line.strip():
-                    continue
+                    except Exception as e:
+                        logger.warning(f"Erreur extraction post {post.shortcode}: {e}")
+                        continue
 
-                try:
-                    video_info = json.loads(line)
-
-                    # Instagram fournit des données différentes de TikTok
-                    # On adapte le format pour être compatible avec le reste du bot
-                    description = video_info.get('description', '') or video_info.get('title', '')
-
-                    video_data = {
-                        'id': video_info.get('id', ''),
-                        'author': username,
-                        'desc': description,  # Description COMPLÈTE avec hashtags originaux
-                        'likes': video_info.get('like_count', 0),
-                        'views': video_info.get('view_count', 0) or video_info.get('play_count', 0),
-                        'shares': 0,  # Instagram ne fournit pas toujours le nombre de partages
-                        'comments': video_info.get('comment_count', 0),
-                        'video_url': video_info.get('webpage_url', ''),
-                        'music': None,  # Instagram gère la musique différemment
-                        'create_time': video_info.get('timestamp', 0),
-                        'platform': 'instagram'  # Identifier la plateforme source
-                    }
-                    videos.append(video_data)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Erreur parsing JSON: {e}")
-                    continue
+                # Pause pour éviter rate limiting
+                time.sleep(0.5)
 
             logger.info(f"✓ {len(videos)} vidéos Instagram récupérées de @{username}")
             return videos
 
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout lors de la récupération des vidéos Instagram de @{username}")
+        except instaloader.exceptions.ProfileNotExistsException:
+            logger.error(f"Le profil Instagram @{username} n'existe pas")
+            return videos
+        except instaloader.exceptions.ConnectionException as e:
+            logger.error(f"Erreur de connexion Instagram pour @{username}: {e}")
+            logger.warning("⚠️  Instagram bloque peut-être vos requêtes. Attendez quelques minutes.")
             return videos
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des vidéos Instagram de @{username}: {e}")
@@ -115,9 +115,14 @@ class InstagramScraper:
         """
         all_videos = []
 
-        for creator in creators:
+        for i, creator in enumerate(creators):
             videos = self.get_user_videos(creator, count_per_creator)
             all_videos.extend(videos)
+
+            # Pause entre créateurs pour éviter rate limiting
+            if i < len(creators) - 1:
+                logger.info("Pause de 2 secondes avant le prochain créateur...")
+                time.sleep(2)
 
         # Retirer les doublons
         unique_videos = {v['id']: v for v in all_videos if v.get('id')}.values()
