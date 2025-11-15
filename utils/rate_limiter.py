@@ -69,29 +69,7 @@ class RateLimiter:
             
             logger.info(f"En attente de {hours_to_wait}h jusqu'aux heures d'activité...")
             time.sleep(3600)  # Vérifier toutes les heures
-    
-    def wait_short_delay(self, min_seconds: int = 2, max_seconds: int = 5):
-        """
-        Attendre un court délai aléatoire (pour actions rapides)
-        
-        Args:
-            min_seconds: Délai minimum en secondes
-            max_seconds: Délai maximum en secondes
-        """
-        delay = random.uniform(min_seconds, max_seconds)
-        time.sleep(delay)
-    
-    def add_human_typing_delay(self, text_length: int):
-        """
-        Simuler un délai de frappe humain
-        
-        Args:
-            text_length: Longueur du texte à "taper"
-        """
-        # Entre 0.05 et 0.15 secondes par caractère
-        delay = text_length * random.uniform(0.05, 0.15)
-        time.sleep(delay)
-    
+
     def should_take_break(self, actions_count: int, break_threshold: int = 5) -> bool:
         """
         Déterminer s'il faut prendre une pause plus longue

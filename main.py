@@ -11,6 +11,7 @@ from datetime import datetime
 from config import Config
 from scraper.tiktok_scraper import TikTokScraper
 from scraper.url_scraper import URLScraper
+from scraper.instagram_scraper import InstagramScraper
 from scraper.video_filter import VideoFilter
 from downloader.video_downloader import VideoDownloader
 from processor.video_processor import VideoProcessor  # Traitement vidéo
@@ -100,7 +101,8 @@ class TikTokBot:
         
         # Initialiser les composants
         self.scraper = TikTokScraper(self.config)
-        self.url_scraper = URLScraper(self.config)  # Scraper alternatif plus fiable
+        self.url_scraper = URLScraper(self.config)  # Scraper TikTok alternatif plus fiable
+        self.instagram_scraper = InstagramScraper(self.config)  # Scraper Instagram
         self.filter = VideoFilter(self.config)
         self.downloader = VideoDownloader(self.config)
         self.processor = VideoProcessor(self.config)  # Traitement vidéo
@@ -140,28 +142,43 @@ class TikTokBot:
             
             # 1. Récupérer les vidéos selon le mode configuré
             logger.info("\n--- Phase 1: Récupération des vidéos ---")
+            logger.info(f"Plateforme source: {self.config.SOURCE_PLATFORM.upper()}")
             logger.info(f"Mode de scraping: {self.config.SCRAPING_MODE.upper()}")
-            
-            if self.config.SCRAPING_MODE == 'search':
-                # Recherche par mots-clés avec yt-dlp (RECOMMANDÉ)
-                logger.info(f"🔍 Recherche par mots-clés: {', '.join(self.config.TARGET_KEYWORDS)}")
-                all_videos = self.url_scraper.get_videos_from_search(
-                    self.config.TARGET_KEYWORDS,
-                    self.config.VIDEOS_PER_KEYWORD
-                )
-            elif self.config.SCRAPING_MODE == 'creators':
-                # Utiliser le scraper URL pour récupérer depuis des créateurs
-                logger.info(f"🔍 Récupération depuis les créateurs: {', '.join(self.config.TARGET_CREATORS)}")
-                all_videos = self.url_scraper.get_videos_from_creators(
-                    self.config.TARGET_CREATORS,
-                    self.config.VIDEOS_PER_CREATOR
-                )
+
+            # Choisir le bon scraper selon la plateforme source
+            if self.config.SOURCE_PLATFORM == 'instagram':
+                # Mode Instagram - seulement 'creators' supporté
+                if self.config.SCRAPING_MODE == 'creators':
+                    logger.info(f"🔍 Récupération Instagram depuis les créateurs: {', '.join(self.config.INSTAGRAM_CREATORS)}")
+                    all_videos = self.instagram_scraper.get_videos_from_creators(
+                        self.config.INSTAGRAM_CREATORS,
+                        self.config.VIDEOS_PER_CREATOR
+                    )
+                else:
+                    logger.warning("⚠️  Instagram ne supporte que le mode 'creators'. Changez SCRAPING_MODE='creators' dans config.py")
+                    return
             else:
-                # Utiliser l'API TikTok (peut être bloqué)
-                logger.info(f"🔍 Recherche API dans les hashtags: {', '.join(self.config.TARGET_HASHTAGS)}")
-                # Utiliser immédiatement la session (pas de délai)
-                # TikTok bloque si on attend trop entre init() et utilisation
-                all_videos = await self.scraper.get_videos_by_hashtags()
+                # Mode TikTok
+                if self.config.SCRAPING_MODE == 'search':
+                    # Recherche par mots-clés avec yt-dlp (RECOMMANDÉ)
+                    logger.info(f"🔍 Recherche TikTok par mots-clés: {', '.join(self.config.TARGET_KEYWORDS)}")
+                    all_videos = self.url_scraper.get_videos_from_search(
+                        self.config.TARGET_KEYWORDS,
+                        self.config.VIDEOS_PER_KEYWORD
+                    )
+                elif self.config.SCRAPING_MODE == 'creators':
+                    # Utiliser le scraper URL pour récupérer depuis des créateurs TikTok
+                    logger.info(f"🔍 Récupération TikTok depuis les créateurs: {', '.join(self.config.TARGET_CREATORS)}")
+                    all_videos = self.url_scraper.get_videos_from_creators(
+                        self.config.TARGET_CREATORS,
+                        self.config.VIDEOS_PER_CREATOR
+                    )
+                else:
+                    # Utiliser l'API TikTok (peut être bloqué)
+                    logger.info(f"🔍 Recherche API TikTok dans les hashtags: {', '.join(self.config.TARGET_HASHTAGS)}")
+                    # Utiliser immédiatement la session (pas de délai)
+                    # TikTok bloque si on attend trop entre init() et utilisation
+                    all_videos = await self.scraper.get_videos_by_hashtags()
             
             if not all_videos:
                 logger.warning("Aucune vidéo récupérée")
@@ -465,15 +482,26 @@ def main():
     logger.info("BOT TIKTOK - RÉCUPÉRATION ET REPUBLICATION")
     logger.info("=" * 60)
     logger.info(f"Configuration:")
+    logger.info(f"  - Plateforme source: {config.SOURCE_PLATFORM.upper()}")
     logger.info(f"  - Mode de scraping: {config.SCRAPING_MODE.upper()}")
-    if config.SCRAPING_MODE == 'search':
-        logger.info(f"  - Mots-clés de recherche: {', '.join(config.TARGET_KEYWORDS)}")
-        logger.info(f"  - Vidéos par mot-clé: {config.VIDEOS_PER_KEYWORD}")
-    elif config.SCRAPING_MODE == 'creators':
-        logger.info(f"  - Créateurs suivis: {', '.join(config.TARGET_CREATORS)}")
-        logger.info(f"  - Vidéos par créateur: {config.VIDEOS_PER_CREATOR}")
+
+    if config.SOURCE_PLATFORM == 'instagram':
+        if config.SCRAPING_MODE == 'creators':
+            logger.info(f"  - Créateurs Instagram suivis: {', '.join(config.INSTAGRAM_CREATORS)}")
+            logger.info(f"  - Vidéos par créateur: {config.VIDEOS_PER_CREATOR}")
+        else:
+            logger.warning("  ⚠️  Instagram ne supporte que le mode 'creators'")
     else:
-        logger.info(f"  - Hashtags API: {', '.join(config.TARGET_HASHTAGS)}")
+        # TikTok
+        if config.SCRAPING_MODE == 'search':
+            logger.info(f"  - Mots-clés de recherche: {', '.join(config.TARGET_KEYWORDS)}")
+            logger.info(f"  - Vidéos par mot-clé: {config.VIDEOS_PER_KEYWORD}")
+        elif config.SCRAPING_MODE == 'creators':
+            logger.info(f"  - Créateurs TikTok suivis: {', '.join(config.TARGET_CREATORS)}")
+            logger.info(f"  - Vidéos par créateur: {config.VIDEOS_PER_CREATOR}")
+        else:
+            logger.info(f"  - Hashtags API: {', '.join(config.TARGET_HASHTAGS)}")
+
     logger.info(f"  - Likes minimum: {config.MIN_LIKES:,}")
     logger.info(f"  - Vues minimum: {config.MIN_VIEWS:,}")
     logger.info(f"  - Taux engagement minimum: {config.MIN_ENGAGEMENT_RATE:.1%}")

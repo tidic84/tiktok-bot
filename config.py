@@ -25,8 +25,12 @@ class Config:
     # Nombre de vidéos à récupérer par mot-clé (mode 'search')
     VIDEOS_PER_KEYWORD = 10
     
+    # PLATEFORME SOURCE: 'tiktok' ou 'instagram'
+    # Détermine depuis quelle plateforme scraper les vidéos
+    SOURCE_PLATFORM = os.getenv('SOURCE_PLATFORM', 'tiktok')
+
     # MODE DE SCRAPING: 'api', 'creators' ou 'search'
-    # 'api' = utilise l'API TikTok (peut être bloqué)
+    # 'api' = utilise l'API TikTok (peut être bloqué) - SEULEMENT pour TikTok
     # 'creators' = récupère des vidéos de créateurs spécifiques (RECOMMANDÉ - fonctionne bien!)
     # 'search' = recherche par mots-clés/hashtags avec yt-dlp (EXPÉRIMENTAL - peut ne pas fonctionner)
     SCRAPING_MODE = 'creators'
@@ -52,6 +56,25 @@ class Config:
     
     # Nombre de vidéos à récupérer par créateur (mode 'creators')
     VIDEOS_PER_CREATOR = 10
+
+    # Créateurs Instagram à suivre (utilisé si SOURCE_PLATFORM = 'instagram' et SCRAPING_MODE = 'creators')
+    # Trouvez des créateurs populaires Instagram dans votre niche
+    # Peut être configuré dans .env avec INSTAGRAM_CREATORS (séparés par des virgules)
+    # Exemples pour food/recipes:
+    _instagram_creators_env = os.getenv('INSTAGRAM_CREATORS', '')
+    if _instagram_creators_env.strip():
+        # Charger depuis .env (séparés par des virgules)
+        INSTAGRAM_CREATORS = [c.strip() for c in _instagram_creators_env.split(',') if c.strip()]
+    else:
+        # Valeurs par défaut
+        INSTAGRAM_CREATORS = [
+            'gordonramsayofficial',  # Gordon Ramsay - chef célèbre
+            'foodnetwork',           # Food Network
+            'buzzfeedtasty',         # BuzzFeed Tasty
+            'cookinglight',          # Recettes healthy
+            'bonappetitmag',         # Bon Appétit Magazine
+            'thefeedfeed'            # The Feed Feed
+        ]
     
     # COMPATIBILITÉ: Alias pour TARGET_KEYWORDS
     @property

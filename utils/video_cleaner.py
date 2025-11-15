@@ -152,29 +152,4 @@ class VideoCleaner:
         except Exception as e:
             logger.error(f"Erreur lors du nettoyage des fichiers temp: {e}")
             return 0
-    
-    def list_old_videos(self) -> List[Tuple[str, float, float]]:
-        """
-        Lister les vidéos qui seront supprimées au prochain nettoyage
-        
-        Returns:
-            Liste de tuples (nom, âge_jours, taille_mb)
-        """
-        try:
-            cutoff_time = time.time() - (self.keep_days * 24 * 60 * 60)
-            old_videos = []
-            
-            for file_path in self.download_folder.glob("*.mp4"):
-                file_mtime = file_path.stat().st_mtime
-                
-                if file_mtime < cutoff_time:
-                    file_size = file_path.stat().st_size / (1024 * 1024)
-                    file_age = (time.time() - file_mtime) / (24 * 60 * 60)
-                    old_videos.append((file_path.name, file_age, file_size))
-            
-            return sorted(old_videos, key=lambda x: x[1], reverse=True)
-            
-        except Exception as e:
-            logger.error(f"Erreur lors du listage des vieilles vidéos: {e}")
-            return []
 
