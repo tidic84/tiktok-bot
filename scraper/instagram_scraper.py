@@ -30,6 +30,15 @@ class InstagramScraper:
             quiet=True  # Moins de logs
         )
 
+        # Configuration du proxy si spécifié
+        proxy_url = getattr(config, 'PROXY_URL', None)
+        if proxy_url:
+            self.loader.context._session.proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+            logger.info(f"Proxy configuré: {proxy_url.split('@')[-1] if '@' in proxy_url else proxy_url}")
+
         # Authentification optionnelle pour éviter le rate limiting
         self.authenticated = False
         instagram_username = getattr(config, 'INSTAGRAM_USERNAME', None)

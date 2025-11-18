@@ -15,6 +15,10 @@ class Config:
     # Credentials Instagram (optionnel, pour éviter le rate limiting)
     INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME', '')
     INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD', '')
+
+    # Proxy (optionnel, pour contourner les blocages d'IP)
+    # Format: http://user:pass@host:port ou http://host:port
+    PROXY_URL = os.getenv('PROXY_URL', '')
     
     # Critères de sélection des vidéos (RÉDUITS pour avoir plus de résultats)
     MIN_LIKES = int(os.getenv('MIN_LIKES', 500))  # Réduit de 50000
