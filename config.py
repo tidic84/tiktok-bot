@@ -19,6 +19,10 @@ class Config:
     # Proxy (optionnel, pour contourner les blocages d'IP)
     # Format: http://user:pass@host:port ou http://host:port
     PROXY_URL = os.getenv('PROXY_URL', '')
+
+    # Fichier de cookies Instagram (optionnel, alternative à username/password)
+    # Format JSON exporté depuis le navigateur (extension "Get cookies.txt" ou similaire)
+    INSTAGRAM_COOKIES_FILE = os.getenv('INSTAGRAM_COOKIES_FILE', '')
     
     # Critères de sélection des vidéos (RÉDUITS pour avoir plus de résultats)
     MIN_LIKES = int(os.getenv('MIN_LIKES', 500))  # Réduit de 50000

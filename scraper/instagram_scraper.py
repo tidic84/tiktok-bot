@@ -4,6 +4,7 @@ from typing import List, Dict
 import instaloader
 import time
 import os
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -41,21 +42,64 @@ class InstagramScraper:
 
         # Authentification optionnelle pour éviter le rate limiting
         self.authenticated = False
-        instagram_username = getattr(config, 'INSTAGRAM_USERNAME', None)
-        instagram_password = getattr(config, 'INSTAGRAM_PASSWORD', None)
 
-        if instagram_username and instagram_password:
+        # Méthode 1: Authentification par cookies JSON (prioritaire)
+        cookies_file = getattr(config, 'INSTAGRAM_COOKIES_FILE', None)
+        if cookies_file and os.path.exists(cookies_file):
             try:
-                logger.info(f"Connexion à Instagram avec le compte: {instagram_username}")
-                self.loader.login(instagram_username, instagram_password)
+                logger.info(f"Chargement des cookies Instagram depuis: {cookies_file}")
+                self._load_cookies_from_json(cookies_file)
                 self.authenticated = True
-                logger.info("✓ Authentification Instagram réussie")
+                logger.info("✓ Authentification Instagram par cookies réussie")
             except Exception as e:
-                logger.warning(f"⚠️  Impossible de se connecter à Instagram: {e}")
-                logger.info("Scraping en mode anonyme (peut être limité)")
-        else:
-            logger.info("InstagramScraper initialisé en mode anonyme (peut être limité par Instagram)")
-            logger.info("Ajoutez INSTAGRAM_USERNAME et INSTAGRAM_PASSWORD dans .env pour éviter les limitations")
+                logger.warning(f"⚠️  Impossible de charger les cookies: {e}")
+                logger.info("Tentative d'authentification par username/password...")
+
+        # Méthode 2: Authentification par username/password (fallback)
+        if not self.authenticated:
+            instagram_username = getattr(config, 'INSTAGRAM_USERNAME', None)
+            instagram_password = getattr(config, 'INSTAGRAM_PASSWORD', None)
+
+            if instagram_username and instagram_password:
+                try:
+                    logger.info(f"Connexion à Instagram avec le compte: {instagram_username}")
+                    self.loader.login(instagram_username, instagram_password)
+                    self.authenticated = True
+                    logger.info("✓ Authentification Instagram réussie")
+                except Exception as e:
+                    logger.warning(f"⚠️  Impossible de se connecter à Instagram: {e}")
+                    logger.info("Scraping en mode anonyme (peut être limité)")
+            else:
+                logger.info("InstagramScraper initialisé en mode anonyme (peut être limité par Instagram)")
+                logger.info("Ajoutez INSTAGRAM_COOKIES_FILE ou INSTAGRAM_USERNAME/PASSWORD dans .env")
+
+    def _load_cookies_from_json(self, cookies_file: str):
+        """
+        Charger les cookies depuis un fichier JSON exporté du navigateur
+
+        Args:
+            cookies_file: Chemin vers le fichier JSON des cookies
+        """
+        with open(cookies_file, 'r') as f:
+            cookies = json.load(f)
+
+        # Convertir les cookies JSON en format requests
+        for cookie in cookies:
+            # Format standard des extensions de navigateur
+            if isinstance(cookie, dict):
+                name = cookie.get('name', '')
+                value = cookie.get('value', '')
+                domain = cookie.get('domain', '.instagram.com')
+
+                # Ajouter le cookie à la session
+                self.loader.context._session.cookies.set(
+                    name,
+                    value,
+                    domain=domain,
+                    path=cookie.get('path', '/')
+                )
+
+        logger.info(f"✓ {len(cookies)} cookies chargés")
 
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """
