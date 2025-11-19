@@ -78,12 +78,18 @@ class InstagramScraper:
         with open(cookies_file, 'r') as f:
             cookies = json.load(f)
 
+        sessionid_found = False
+
         # Convertir les cookies JSON en format requests
         for cookie in cookies:
             if isinstance(cookie, dict):
                 name = cookie.get('name', '')
                 value = cookie.get('value', '')
                 domain = cookie.get('domain', '.instagram.com')
+
+                # Normaliser le domain pour Instagram
+                if 'instagram' in domain:
+                    domain = '.instagram.com'
 
                 self.session.cookies.set(
                     name,
@@ -92,7 +98,30 @@ class InstagramScraper:
                     path=cookie.get('path', '/')
                 )
 
+                # Vérifier si on a le sessionid (critique pour l'auth)
+                if name == 'sessionid':
+                    sessionid_found = True
+                    logger.info(f"✓ sessionid trouvé")
+
         logger.info(f"✓ {len(cookies)} cookies chargés")
+
+        # Construire le header Cookie pour instascrape
+        cookie_pairs = []
+        for cookie in cookies:
+            if isinstance(cookie, dict):
+                name = cookie.get('name', '')
+                value = cookie.get('value', '')
+                if name and value:
+                    cookie_pairs.append(f"{name}={value}")
+
+        if cookie_pairs:
+            cookie_header = "; ".join(cookie_pairs)
+            self.session.headers['Cookie'] = cookie_header
+            logger.info(f"✓ Header Cookie configuré")
+
+        if not sessionid_found:
+            logger.warning("⚠️  Cookie 'sessionid' non trouvé! L'authentification risque d'échouer.")
+            logger.warning("   Assurez-vous d'être connecté à Instagram avant d'exporter les cookies.")
 
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """
