@@ -1,12 +1,20 @@
-"""Scraper Instagram utilisant instaloader"""
+"""Scraper Instagram utilisant instascrape"""
 import logging
 from typing import List, Dict
-import instaloader
 import time
 import os
 import json
+import requests
 
 logger = logging.getLogger(__name__)
+
+# Import instascrape
+try:
+    from instascrape import Profile, Post
+    INSTASCRAPE_AVAILABLE = True
+except ImportError:
+    INSTASCRAPE_AVAILABLE = False
+    logger.warning("instascrape non installé. Installez avec: pip install insta-scrape")
 
 
 class InstagramScraper:
@@ -20,30 +28,33 @@ class InstagramScraper:
             config: Objet de configuration
         """
         self.config = config
-        self.loader = instaloader.Instaloader(
-            download_pictures=False,
-            download_videos=False,
-            download_video_thumbnails=False,
-            download_geotags=False,
-            download_comments=False,
-            save_metadata=False,
-            compress_json=False,
-            quiet=True  # Moins de logs
-        )
+        self.session = requests.Session()
+        self.authenticated = False
+
+        if not INSTASCRAPE_AVAILABLE:
+            logger.error("instascrape n'est pas disponible")
+            return
 
         # Configuration du proxy si spécifié
         proxy_url = getattr(config, 'PROXY_URL', None)
         if proxy_url:
-            self.loader.context._session.proxies = {
+            self.session.proxies = {
                 'http': proxy_url,
                 'https': proxy_url
             }
             logger.info(f"Proxy configuré: {proxy_url.split('@')[-1] if '@' in proxy_url else proxy_url}")
 
-        # Authentification optionnelle pour éviter le rate limiting
-        self.authenticated = False
+        # Headers pour simuler un navigateur
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        })
 
-        # Méthode 1: Authentification par cookies JSON (prioritaire)
+        # Authentification par cookies JSON (prioritaire)
         cookies_file = getattr(config, 'INSTAGRAM_COOKIES_FILE', None)
         if cookies_file and os.path.exists(cookies_file):
             try:
@@ -53,25 +64,9 @@ class InstagramScraper:
                 logger.info("✓ Authentification Instagram par cookies réussie")
             except Exception as e:
                 logger.warning(f"⚠️  Impossible de charger les cookies: {e}")
-                logger.info("Tentative d'authentification par username/password...")
-
-        # Méthode 2: Authentification par username/password (fallback)
-        if not self.authenticated:
-            instagram_username = getattr(config, 'INSTAGRAM_USERNAME', None)
-            instagram_password = getattr(config, 'INSTAGRAM_PASSWORD', None)
-
-            if instagram_username and instagram_password:
-                try:
-                    logger.info(f"Connexion à Instagram avec le compte: {instagram_username}")
-                    self.loader.login(instagram_username, instagram_password)
-                    self.authenticated = True
-                    logger.info("✓ Authentification Instagram réussie")
-                except Exception as e:
-                    logger.warning(f"⚠️  Impossible de se connecter à Instagram: {e}")
-                    logger.info("Scraping en mode anonyme (peut être limité)")
-            else:
-                logger.info("InstagramScraper initialisé en mode anonyme (peut être limité par Instagram)")
-                logger.info("Ajoutez INSTAGRAM_COOKIES_FILE ou INSTAGRAM_USERNAME/PASSWORD dans .env")
+        else:
+            logger.info("InstagramScraper initialisé en mode anonyme (peut être limité par Instagram)")
+            logger.info("Ajoutez INSTAGRAM_COOKIES_FILE dans .env pour éviter les limitations")
 
     def _load_cookies_from_json(self, cookies_file: str):
         """
@@ -85,14 +80,12 @@ class InstagramScraper:
 
         # Convertir les cookies JSON en format requests
         for cookie in cookies:
-            # Format standard des extensions de navigateur
             if isinstance(cookie, dict):
                 name = cookie.get('name', '')
                 value = cookie.get('value', '')
                 domain = cookie.get('domain', '.instagram.com')
 
-                # Ajouter le cookie à la session
-                self.loader.context._session.cookies.set(
+                self.session.cookies.set(
                     name,
                     value,
                     domain=domain,
@@ -103,7 +96,7 @@ class InstagramScraper:
 
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """
-        Récupérer les vidéos d'un utilisateur Instagram via instaloader
+        Récupérer les vidéos d'un utilisateur Instagram via instascrape
 
         Args:
             username: Nom d'utilisateur Instagram (sans @)
@@ -114,35 +107,49 @@ class InstagramScraper:
         """
         videos = []
 
+        if not INSTASCRAPE_AVAILABLE:
+            logger.error("instascrape n'est pas disponible")
+            return videos
+
         try:
             logger.info(f"Récupération des vidéos Instagram de @{username}...")
 
-            # Charger le profil
-            profile = instaloader.Profile.from_username(self.loader.context, username)
+            # Créer le profil avec instascrape
+            profile_url = f"https://www.instagram.com/{username}/"
+            profile = Profile(profile_url)
 
-            # Parcourir les posts (limité à count vidéos)
+            # Scraper le profil avec notre session authentifiée
+            profile.scrape(session=self.session)
+
+            # Récupérer les posts récents
+            posts = profile.get_posts(session=self.session, amt=count * 2)  # Récupérer plus pour filtrer les vidéos
+
             video_count = 0
-            for post in profile.get_posts():
-                # Ne garder que les vidéos (Reels ou IGTV)
-                if post.is_video:
-                    try:
+            for post_data in posts:
+                try:
+                    # Créer l'objet Post et scraper ses détails
+                    post = Post(post_data.url)
+                    post.scrape(session=self.session)
+
+                    # Vérifier si c'est une vidéo
+                    if post.is_video:
                         # Calculer le taux d'engagement
                         engagement_rate = 0.0
-                        if post.video_view_count and post.video_view_count > 0:
+                        if hasattr(post, 'video_view_count') and post.video_view_count and post.video_view_count > 0:
                             interactions = post.likes + post.comments
                             engagement_rate = interactions / post.video_view_count
 
                         video_data = {
                             'id': post.shortcode,
                             'author': username,
-                            'desc': post.caption or '',  # Description avec hashtags
-                            'likes': post.likes,
-                            'views': post.video_view_count or 0,
-                            'shares': 0,  # Instagram ne fournit pas cette donnée
-                            'comments': post.comments,
+                            'desc': post.caption if hasattr(post, 'caption') else '',
+                            'likes': post.likes if hasattr(post, 'likes') else 0,
+                            'views': post.video_view_count if hasattr(post, 'video_view_count') else 0,
+                            'shares': 0,
+                            'comments': post.comments if hasattr(post, 'comments') else 0,
                             'video_url': f"https://www.instagram.com/p/{post.shortcode}/",
                             'music': None,
-                            'create_time': int(post.date_utc.timestamp()),
+                            'create_time': int(post.timestamp.timestamp()) if hasattr(post, 'timestamp') else 0,
                             'platform': 'instagram',
                             'engagement_rate': engagement_rate
                         }
@@ -152,25 +159,23 @@ class InstagramScraper:
                         if video_count >= count:
                             break
 
-                    except Exception as e:
-                        logger.warning(f"Erreur extraction post {post.shortcode}: {e}")
-                        continue
+                    # Pause pour éviter rate limiting
+                    time.sleep(1)
 
-                # Pause pour éviter rate limiting
-                time.sleep(0.5)
+                except Exception as e:
+                    logger.warning(f"Erreur extraction post: {e}")
+                    continue
 
             logger.info(f"✓ {len(videos)} vidéos Instagram récupérées de @{username}")
             return videos
 
-        except instaloader.exceptions.ProfileNotExistsException:
-            logger.error(f"Le profil Instagram @{username} n'existe pas")
-            return videos
-        except instaloader.exceptions.ConnectionException as e:
-            logger.error(f"Erreur de connexion Instagram pour @{username}: {e}")
-            logger.warning("⚠️  Instagram bloque peut-être vos requêtes. Attendez quelques minutes.")
-            return videos
         except Exception as e:
-            logger.error(f"Erreur lors de la récupération des vidéos Instagram de @{username}: {e}")
+            error_msg = str(e)
+            if '401' in error_msg or '403' in error_msg or 'Unauthorized' in error_msg:
+                logger.error(f"Erreur de connexion Instagram pour @{username}: {e}")
+                logger.warning("⚠️  Instagram bloque peut-être vos requêtes. Vérifiez vos cookies.")
+            else:
+                logger.error(f"Erreur lors de la récupération des vidéos Instagram de @{username}: {e}")
             return videos
 
     def get_videos_from_creators(self, creators: List[str], count_per_creator: int = 10) -> List[Dict]:
@@ -192,8 +197,8 @@ class InstagramScraper:
 
             # Pause entre créateurs pour éviter rate limiting
             if i < len(creators) - 1:
-                logger.info("Pause de 2 secondes avant le prochain créateur...")
-                time.sleep(2)
+                logger.info("Pause de 3 secondes avant le prochain créateur...")
+                time.sleep(3)
 
         # Retirer les doublons
         unique_videos = {v['id']: v for v in all_videos if v.get('id')}.values()
