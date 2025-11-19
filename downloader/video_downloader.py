@@ -108,8 +108,9 @@ class VideoDownloader:
             logger.info(f"Vidéo {video_id} déjà téléchargée")
             return str(filepath.absolute())
         
-        # Méthode 1 : Essayer avec yt-dlp (le meilleur pour TikTok)
-        if self._download_with_ytdlp(video_id, author, filepath):
+        # Méthode 1 : Essayer avec yt-dlp (pour TikTok et Instagram)
+        video_url = video_data.get('video_url')
+        if self._download_with_ytdlp(video_id, author, filepath, video_url):
             return str(filepath.absolute())
         
         # Méthode 2 : Fallback avec requests si URL disponible
@@ -120,23 +121,27 @@ class VideoDownloader:
         logger.error(f"Échec du téléchargement de {video_id} avec toutes les méthodes")
         return None
     
-    def _download_with_ytdlp(self, video_id: str, author: str, filepath: Path) -> bool:
+    def _download_with_ytdlp(self, video_id: str, author: str, filepath: Path, video_url: str = None) -> bool:
         """
-        Télécharger avec yt-dlp (RECOMMANDÉ pour TikTok)
-        
+        Télécharger avec yt-dlp (pour TikTok et Instagram)
+
         Args:
             video_id: ID de la vidéo
             author: Auteur de la vidéo
             filepath: Chemin de destination
-            
+            video_url: URL complète de la vidéo (optionnel, sinon construit pour TikTok)
+
         Returns:
             True si succès
         """
         try:
-            # Construire l'URL TikTok
-            tiktok_url = f"https://www.tiktok.com/@{author}/video/{video_id}"
-            
-            logger.info(f"Téléchargement avec yt-dlp: {video_id}...")
+            # Utiliser l'URL fournie ou construire l'URL TikTok
+            if video_url:
+                url = video_url
+                logger.info(f"Téléchargement avec yt-dlp: {video_id} ({url})...")
+            else:
+                url = f"https://www.tiktok.com/@{author}/video/{video_id}"
+                logger.info(f"Téléchargement avec yt-dlp: {video_id}...")
             
             # Commande yt-dlp simple (téléchargement)
             cmd = [
@@ -147,7 +152,7 @@ class VideoDownloader:
                 '-o', str(filepath),
                 '--no-playlist',
                 '--no-check-certificate',
-                tiktok_url
+                url
             ]
             
             # Exécuter la commande
@@ -297,47 +302,7 @@ class VideoDownloader:
             if filepath.exists():
                 filepath.unlink()
             return False
-    
-    def delete_video(self, video_path: str) -> bool:
-        """
-        Supprimer un fichier vidéo
-        
-        Args:
-            video_path: Chemin du fichier à supprimer
-            
-        Returns:
-            True si la suppression a réussi
-        """
-        try:
-            path = Path(video_path)
-            if path.exists():
-                path.unlink()
-                logger.info(f"Vidéo {path.name} supprimée")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Erreur lors de la suppression de {video_path}: {e}")
-            return False
-    
-    def get_video_size(self, video_path: str) -> float:
-        """
-        Obtenir la taille d'une vidéo en MB
-        
-        Args:
-            video_path: Chemin du fichier vidéo
-            
-        Returns:
-            Taille en MB
-        """
-        try:
-            path = Path(video_path)
-            if path.exists():
-                return path.stat().st_size / (1024 * 1024)
-            return 0.0
-        except Exception as e:
-            logger.error(f"Erreur lors de la lecture de la taille: {e}")
-            return 0.0
-    
+
     def cleanup_old_videos(self, keep_count: int = 50):
         """
         Nettoyer les anciennes vidéos pour libérer de l'espace
