@@ -1,24 +1,17 @@
-"""Scraper Instagram utilisant instascrape"""
+"""Scraper Instagram utilisant l'API GraphQL d'Instagram"""
 import logging
 from typing import List, Dict
 import time
 import os
 import json
 import requests
+import re
 
 logger = logging.getLogger(__name__)
 
-# Import instascrape
-try:
-    from instascrape import Profile, Post
-    INSTASCRAPE_AVAILABLE = True
-except ImportError:
-    INSTASCRAPE_AVAILABLE = False
-    logger.warning("instascrape non installé. Installez avec: pip install insta-scrape")
-
 
 class InstagramScraper:
-    """Scraper qui récupère des vidéos Instagram depuis des créateurs spécifiques"""
+    """Scraper qui récupère des vidéos Instagram via l'API GraphQL"""
 
     def __init__(self, config):
         """
@@ -30,10 +23,6 @@ class InstagramScraper:
         self.config = config
         self.session = requests.Session()
         self.authenticated = False
-
-        if not INSTASCRAPE_AVAILABLE:
-            logger.error("instascrape n'est pas disponible")
-            return
 
         # Configuration du proxy si spécifié
         proxy_url = getattr(config, 'PROXY_URL', None)
@@ -47,85 +36,157 @@ class InstagramScraper:
         # Headers pour simuler un navigateur
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
+            'X-IG-App-ID': '936619743392459',  # Instagram Web App ID
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://www.instagram.com/',
+            'Origin': 'https://www.instagram.com',
         })
 
-        # Authentification par cookies JSON (prioritaire)
+        # Charger les cookies si disponibles (améliore le taux de succès)
         cookies_file = getattr(config, 'INSTAGRAM_COOKIES_FILE', None)
         if cookies_file and os.path.exists(cookies_file):
             try:
                 logger.info(f"Chargement des cookies Instagram depuis: {cookies_file}")
                 self._load_cookies_from_json(cookies_file)
                 self.authenticated = True
-                logger.info("✓ Authentification Instagram par cookies réussie")
+                logger.info("✓ Cookies chargés (améliore le taux de succès)")
             except Exception as e:
                 logger.warning(f"⚠️  Impossible de charger les cookies: {e}")
+                logger.info("Scraping en mode anonyme via GraphQL")
         else:
-            logger.info("InstagramScraper initialisé en mode anonyme (peut être limité par Instagram)")
-            logger.info("Ajoutez INSTAGRAM_COOKIES_FILE dans .env pour éviter les limitations")
+            logger.info("InstagramScraper initialisé (API GraphQL)")
 
     def _load_cookies_from_json(self, cookies_file: str):
-        """
-        Charger les cookies depuis un fichier JSON exporté du navigateur
-
-        Args:
-            cookies_file: Chemin vers le fichier JSON des cookies
-        """
+        """Charger les cookies depuis un fichier JSON"""
         with open(cookies_file, 'r') as f:
             cookies = json.load(f)
 
         sessionid_found = False
-
-        # Convertir les cookies JSON en format requests
-        for cookie in cookies:
-            if isinstance(cookie, dict):
-                name = cookie.get('name', '')
-                value = cookie.get('value', '')
-                domain = cookie.get('domain', '.instagram.com')
-
-                # Normaliser le domain pour Instagram
-                if 'instagram' in domain:
-                    domain = '.instagram.com'
-
-                self.session.cookies.set(
-                    name,
-                    value,
-                    domain=domain,
-                    path=cookie.get('path', '/')
-                )
-
-                # Vérifier si on a le sessionid (critique pour l'auth)
-                if name == 'sessionid':
-                    sessionid_found = True
-                    logger.info(f"✓ sessionid trouvé")
-
-        logger.info(f"✓ {len(cookies)} cookies chargés")
-
-        # Construire le header Cookie pour instascrape
         cookie_pairs = []
+
         for cookie in cookies:
             if isinstance(cookie, dict):
                 name = cookie.get('name', '')
                 value = cookie.get('value', '')
+
                 if name and value:
                     cookie_pairs.append(f"{name}={value}")
 
-        if cookie_pairs:
-            cookie_header = "; ".join(cookie_pairs)
-            self.session.headers['Cookie'] = cookie_header
-            logger.info(f"✓ Header Cookie configuré")
+                    # Ajouter aux cookies de session
+                    domain = cookie.get('domain', '.instagram.com')
+                    if 'instagram' in domain:
+                        domain = '.instagram.com'
 
-        if not sessionid_found:
-            logger.warning("⚠️  Cookie 'sessionid' non trouvé! L'authentification risque d'échouer.")
-            logger.warning("   Assurez-vous d'être connecté à Instagram avant d'exporter les cookies.")
+                    self.session.cookies.set(
+                        name, value, domain=domain, path=cookie.get('path', '/')
+                    )
+
+                    if name == 'sessionid':
+                        sessionid_found = True
+
+        # Ajouter le header Cookie
+        if cookie_pairs:
+            self.session.headers['Cookie'] = "; ".join(cookie_pairs)
+
+        logger.info(f"✓ {len(cookies)} cookies chargés")
+        if sessionid_found:
+            logger.info("✓ sessionid trouvé")
+
+    def _get_user_id(self, username: str) -> str:
+        """Obtenir l'ID utilisateur depuis le nom d'utilisateur"""
+        try:
+            url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={username}"
+            response = self.session.get(url, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                return data['data']['user']['id']
+            else:
+                # Fallback: scraper la page profil
+                url = f"https://www.instagram.com/{username}/"
+                response = self.session.get(url, timeout=10)
+
+                # Chercher l'ID dans le HTML
+                match = re.search(r'"user_id":"(\d+)"', response.text)
+                if match:
+                    return match.group(1)
+
+                match = re.search(r'"profilePage_(\d+)"', response.text)
+                if match:
+                    return match.group(1)
+
+        except Exception as e:
+            logger.debug(f"Erreur obtention user_id pour {username}: {e}")
+
+        return None
+
+    def _get_user_posts_graphql(self, user_id: str, count: int = 12) -> List[Dict]:
+        """Récupérer les posts d'un utilisateur via GraphQL"""
+        posts = []
+
+        try:
+            # Variables pour la requête GraphQL
+            variables = {
+                "id": user_id,
+                "first": count
+            }
+
+            # doc_id pour récupérer les posts d'un utilisateur
+            # Ce doc_id est pour la requête PolarisProfilePostsQuery
+            params = {
+                "variables": json.dumps(variables),
+                "doc_id": "17991233890457762"  # Posts query
+            }
+
+            url = "https://www.instagram.com/graphql/query/"
+            response = self.session.get(url, params=params, timeout=15)
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Parser les edges
+                edges = data.get('data', {}).get('user', {}).get('edge_owner_to_timeline_media', {}).get('edges', [])
+
+                for edge in edges:
+                    node = edge.get('node', {})
+                    posts.append(node)
+
+            return posts
+
+        except Exception as e:
+            logger.debug(f"Erreur GraphQL posts: {e}")
+            return posts
+
+    def _get_post_details(self, shortcode: str) -> Dict:
+        """Obtenir les détails d'un post via GraphQL"""
+        try:
+            variables = {
+                "shortcode": shortcode
+            }
+
+            params = {
+                "variables": json.dumps(variables),
+                "doc_id": "10015901848480474"  # Post details query
+            }
+
+            url = "https://www.instagram.com/graphql/query/"
+            response = self.session.get(url, params=params, timeout=15)
+
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('data', {}).get('xdt_shortcode_media', {})
+
+        except Exception as e:
+            logger.debug(f"Erreur détails post {shortcode}: {e}")
+
+        return {}
 
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """
-        Récupérer les vidéos d'un utilisateur Instagram via instascrape
+        Récupérer les vidéos d'un utilisateur Instagram
 
         Args:
             username: Nom d'utilisateur Instagram (sans @)
@@ -136,49 +197,55 @@ class InstagramScraper:
         """
         videos = []
 
-        if not INSTASCRAPE_AVAILABLE:
-            logger.error("instascrape n'est pas disponible")
-            return videos
-
         try:
             logger.info(f"Récupération des vidéos Instagram de @{username}...")
 
-            # Créer le profil avec instascrape
-            profile_url = f"https://www.instagram.com/{username}/"
-            profile = Profile(profile_url)
+            # Méthode 1: Essayer l'API web_profile_info
+            user_id = self._get_user_id(username)
 
-            # Scraper le profil avec notre session authentifiée
-            profile.scrape(session=self.session)
-
-            # Récupérer les posts récents
-            posts = profile.get_posts(session=self.session, amt=count * 2)  # Récupérer plus pour filtrer les vidéos
+            if user_id:
+                logger.debug(f"User ID trouvé: {user_id}")
+                posts = self._get_user_posts_graphql(user_id, count * 2)
+            else:
+                # Méthode 2: Scraper directement la page profil
+                posts = self._scrape_profile_page(username, count * 2)
 
             video_count = 0
-            for post_data in posts:
+            for post in posts:
                 try:
-                    # Créer l'objet Post et scraper ses détails
-                    post = Post(post_data.url)
-                    post.scrape(session=self.session)
-
                     # Vérifier si c'est une vidéo
-                    if post.is_video:
+                    is_video = post.get('is_video', False)
+
+                    if is_video:
+                        shortcode = post.get('shortcode', '')
+
+                        # Récupérer les vues (peut nécessiter un appel supplémentaire)
+                        view_count = post.get('video_view_count', 0)
+                        like_count = post.get('edge_liked_by', {}).get('count', 0) or post.get('like_count', 0)
+                        comment_count = post.get('edge_media_to_comment', {}).get('count', 0) or post.get('comment_count', 0)
+
                         # Calculer le taux d'engagement
                         engagement_rate = 0.0
-                        if hasattr(post, 'video_view_count') and post.video_view_count and post.video_view_count > 0:
-                            interactions = post.likes + post.comments
-                            engagement_rate = interactions / post.video_view_count
+                        if view_count and view_count > 0:
+                            engagement_rate = (like_count + comment_count) / view_count
+
+                        # Description
+                        caption = ''
+                        edges = post.get('edge_media_to_caption', {}).get('edges', [])
+                        if edges:
+                            caption = edges[0].get('node', {}).get('text', '')
 
                         video_data = {
-                            'id': post.shortcode,
+                            'id': shortcode,
                             'author': username,
-                            'desc': post.caption if hasattr(post, 'caption') else '',
-                            'likes': post.likes if hasattr(post, 'likes') else 0,
-                            'views': post.video_view_count if hasattr(post, 'video_view_count') else 0,
+                            'desc': caption,
+                            'likes': like_count,
+                            'views': view_count,
                             'shares': 0,
-                            'comments': post.comments if hasattr(post, 'comments') else 0,
-                            'video_url': f"https://www.instagram.com/p/{post.shortcode}/",
+                            'comments': comment_count,
+                            'video_url': f"https://www.instagram.com/p/{shortcode}/",
                             'music': None,
-                            'create_time': int(post.timestamp.timestamp()) if hasattr(post, 'timestamp') else 0,
+                            'create_time': post.get('taken_at_timestamp', 0),
                             'platform': 'instagram',
                             'engagement_rate': engagement_rate
                         }
@@ -188,11 +255,8 @@ class InstagramScraper:
                         if video_count >= count:
                             break
 
-                    # Pause pour éviter rate limiting
-                    time.sleep(1)
-
                 except Exception as e:
-                    logger.warning(f"Erreur extraction post: {e}")
+                    logger.debug(f"Erreur extraction post: {e}")
                     continue
 
             logger.info(f"✓ {len(videos)} vidéos Instagram récupérées de @{username}")
@@ -200,12 +264,48 @@ class InstagramScraper:
 
         except Exception as e:
             error_msg = str(e)
-            if '401' in error_msg or '403' in error_msg or 'Unauthorized' in error_msg:
-                logger.error(f"Erreur de connexion Instagram pour @{username}: {e}")
-                logger.warning("⚠️  Instagram bloque peut-être vos requêtes. Vérifiez vos cookies.")
+            if '401' in error_msg or '403' in error_msg:
+                logger.error(f"Erreur d'accès Instagram pour @{username}: {e}")
+                logger.warning("⚠️  Instagram bloque les requêtes. Essayez avec des cookies.")
             else:
-                logger.error(f"Erreur lors de la récupération des vidéos Instagram de @{username}: {e}")
+                logger.error(f"Erreur lors de la récupération des vidéos de @{username}: {e}")
             return videos
+
+    def _scrape_profile_page(self, username: str, count: int) -> List[Dict]:
+        """Scraper la page profil pour obtenir les posts"""
+        posts = []
+
+        try:
+            url = f"https://www.instagram.com/{username}/"
+            response = self.session.get(url, timeout=15)
+
+            if response.status_code == 200:
+                # Chercher les données JSON dans la page
+                # Pattern pour trouver les données de posts
+                patterns = [
+                    r'window\._sharedData\s*=\s*({.+?});</script>',
+                    r'window\.__additionalDataLoaded\s*\([^,]+,\s*({.+?})\);',
+                ]
+
+                for pattern in patterns:
+                    match = re.search(pattern, response.text)
+                    if match:
+                        try:
+                            data = json.loads(match.group(1))
+                            # Extraire les posts selon la structure
+                            user_data = data.get('entry_data', {}).get('ProfilePage', [{}])[0].get('graphql', {}).get('user', {})
+                            edges = user_data.get('edge_owner_to_timeline_media', {}).get('edges', [])
+
+                            for edge in edges[:count]:
+                                posts.append(edge.get('node', {}))
+                            break
+                        except:
+                            continue
+
+        except Exception as e:
+            logger.debug(f"Erreur scraping page profil: {e}")
+
+        return posts
 
     def get_videos_from_creators(self, creators: List[str], count_per_creator: int = 10) -> List[Dict]:
         """
