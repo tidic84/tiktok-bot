@@ -169,7 +169,119 @@ class TikTokBot:
             
             # 2. Sélection intelligente de la meilleure vidéo
             logger.info("\n--- Phase 2: Sélection de la vidéo ---")
-            
+
+            # Si AUTO_PUBLISH est activé, vérifier d'abord les vidéos en attente
+            if self.config.AUTO_PUBLISH:
+                pending_records = self.db.get_pending_videos(limit=remaining_slots)
+                if pending_records:
+                    logger.info(f"🔁 AUTO_PUBLISH activé - Reprise de {len(pending_records)} vidéo(s) en attente")
+                    videos_to_upload = []
+                    for record in pending_records:
+                        videos_to_upload.append({
+                            'id': record.id,
+                            'author': record.author,
+                            'desc': record.description or '',
+                            'likes': record.likes or 0,
+                            'views': record.views or 0,
+                            'shares': record.shares or 0,
+                            'comments': record.comments or 0,
+                            'engagement_rate': record.engagement_rate or 0.0,
+                            'video_url': record.original_url or '',
+                            'local_path': record.local_path,
+                            'create_time': 0
+                        })
+                    logger.info(f"✓ {len(videos_to_upload)} vidéo(s) en attente prêtes pour publication")
+                    # Passer directement à la phase d'upload (sauter la sélection)
+                    if videos_to_upload:
+                        # Aller directement à la phase 3
+                        logger.info(f"\n--- Phase 3: Traitement de {len(videos_to_upload)} vidéo(s) ---")
+                        uploaded_count = 0
+
+                        for i, video in enumerate(videos_to_upload):
+                            if uploaded_count >= remaining_slots:
+                                logger.info(f"✓ Limite de {remaining_slots} vidéos atteinte pour ce cycle")
+                                break
+
+                            logger.info(f"\n[{i+1}/{len(videos_to_upload)}] Traitement de la vidéo {video['id']}")
+
+                            # Vérifier si la vidéo est déjà en base
+                            existing_record = self.db.get_video(video['id'])
+                            if existing_record and existing_record.is_uploaded:
+                                logger.info(f"⊗ Vidéo {video['id']} déjà uploadée, passage à la suivante")
+                                continue
+
+                            # Vérifier que le fichier existe
+                            video_path = video.get('local_path')
+                            if not video_path or not Path(video_path).exists():
+                                logger.warning(f"⊗ Fichier local introuvable pour {video['id']}")
+                                continue
+
+                            # Initialiser Selenium seulement maintenant (lazy loading COMPLET)
+                            if not self.uploader_ready:
+                                logger.info("Initialisation de Selenium pour l'upload...")
+
+                                # Importer et créer l'uploader SEULEMENT maintenant
+                                from uploader.selenium_uploader import SeleniumUploader
+                                self.uploader = SeleniumUploader(self.config)
+
+                                if not self.uploader.initialize_browser():
+                                    logger.error("Échec de l'initialisation du navigateur")
+                                    continue
+                                if not self.uploader.login():
+                                    logger.error("Échec de la connexion à TikTok")
+                                    continue
+                                self.uploader_ready = True
+                                logger.info("✓ Selenium prêt pour les uploads")
+
+                            # Préparer la description
+                            original_description = video.get('desc', '')
+                            max_hashtags = getattr(self.config, 'MAX_HASHTAGS', 5)
+                            sanitized_description = sanitize_description(
+                                original_description,
+                                max_hashtags=max_hashtags
+                            )
+
+                            video['desc'] = sanitized_description
+
+                            # Upload sur TikTok
+                            logger.info(f"Upload de la vidéo {video['id']}...")
+                            upload_success = self.uploader.upload_video(
+                                video_path=video_path,
+                                title="",
+                                description=sanitized_description,
+                                hashtags=None
+                            )
+
+                            if upload_success:
+                                self.db.mark_as_uploaded(video['id'])
+                                uploaded_count += 1
+                                logger.info(
+                                    f"✓ Vidéo {video['id']} uploadée avec succès "
+                                    f"({uploaded_count}/{remaining_slots})"
+                                )
+
+                                # Pause entre uploads
+                                if uploaded_count < remaining_slots:
+                                    self.rate_limiter.wait_random_delay()
+
+                                # Pause longue tous les 5 uploads
+                                if self.rate_limiter.should_take_break(uploaded_count):
+                                    self.rate_limiter.take_long_break(30, 45)
+                            else:
+                                logger.warning(f"⊗ Échec de l'upload de {video['id']}")
+
+                            # Vérifier qu'on est toujours dans les heures actives
+                            if not self.rate_limiter.is_active_hours():
+                                logger.info("Hors heures d'activité, arrêt du cycle")
+                                break
+
+                        # Nettoyage des anciennes vidéos
+                        logger.info("\n--- Nettoyage ---")
+                        self.downloader.cleanup_old_videos(keep_count=50)
+
+                        logger.info(f"\n✓ Cycle terminé - {uploaded_count} vidéos uploadées")
+                        return
+
             if self.config.SMART_SELECTION:
                 try:
                     known_ids = self.db.get_known_video_ids()
@@ -277,7 +389,13 @@ class TikTokBot:
                 if not self.db.add_video(video):
                     logger.warning(f"⊗ Échec de l'enregistrement en base pour {video['id']}")
                     continue
-                
+
+                # Vérifier si l'auto-publication est activée
+                if not self.config.AUTO_PUBLISH:
+                    logger.info(f"ℹ️  Auto-publication désactivée - vidéo {video['id']} mise en file d'attente")
+                    logger.info(f"   La vidéo sera publiée lors du prochain cycle avec AUTO_PUBLISH=True")
+                    continue
+
                 # Initialiser Selenium seulement maintenant (lazy loading COMPLET)
                 if not self.uploader_ready:
                     logger.info("Initialisation de Selenium pour l'upload...")
@@ -479,6 +597,7 @@ def main():
     logger.info(f"  - Taux engagement minimum: {config.MIN_ENGAGEMENT_RATE:.1%}")
     logger.info(f"  - Max vidéos/jour: {config.MAX_VIDEOS_PER_DAY}")
     logger.info(f"  - Heures actives: {config.ACTIVE_HOURS_START}h-{config.ACTIVE_HOURS_END}h")
+    logger.info(f"  - Auto-publication: {'ACTIVÉE' if config.AUTO_PUBLISH else 'DÉSACTIVÉE'}")
     logger.info("=" * 60)
     
     logger.warning("\n⚠️  AVERTISSEMENT:")

@@ -104,7 +104,10 @@ class Config:
     
     # Gestion des descriptions TikTok
     MAX_HASHTAGS = int(os.getenv('MAX_HASHTAGS', 5))  # Nombre maximum de hashtags autorisés dans la description
-    
+
+    # Auto-publication
+    AUTO_PUBLISH = os.getenv('AUTO_PUBLISH', 'True').lower() in ('true', '1', 'yes', 'on')  # Publier automatiquement les vidéos en file d'attente
+
     @classmethod
     def create_folders(cls):
         """Créer les dossiers nécessaires s'ils n'existent pas"""
