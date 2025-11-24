@@ -2,6 +2,7 @@
 import logging
 from typing import List, Dict
 import time
+import random
 
 import instaloader
 from instaloader import Instaloader, Profile, Post
@@ -9,7 +10,8 @@ from instaloader.exceptions import (
     ProfileNotExistsException,
     LoginRequiredException,
     ConnectionException,
-    QueryReturnedBadRequestException
+    QueryReturnedBadRequestException,
+    TooManyRequestsException
 )
 
 logger = logging.getLogger(__name__)
@@ -178,13 +180,25 @@ class InstagramScraper:
         except QueryReturnedBadRequestException as e:
             logger.error(f"❌ Instagram a retourné une erreur (rate limit?): {e}")
             logger.info("💡 Attendez quelques minutes avant de réessayer")
-            return videos
+            raise  # Propager l'erreur pour arrêter le scraping
+
+        except TooManyRequestsException as e:
+            logger.error(f"❌ Rate limit Instagram détecté: {e}")
+            logger.info("💡 Instagram limite le nombre de requêtes. Attendez 1-2 heures.")
+            raise  # Propager l'erreur pour arrêter le scraping
 
         except ConnectionException as e:
             logger.error(f"❌ Erreur de connexion Instagram: {e}")
             return videos
 
         except Exception as e:
+            error_msg = str(e).lower()
+            # Détecter les erreurs 401 (rate limiting)
+            if '401' in error_msg or 'unauthorized' in error_msg or 'wait a few minutes' in error_msg:
+                logger.error(f"❌ Rate limit Instagram détecté: {e}")
+                logger.info("💡 Instagram limite le nombre de requêtes. Attendez 1-2 heures.")
+                raise  # Propager l'erreur pour arrêter le scraping
+
             logger.error(f"❌ Erreur lors de la récupération des vidéos de @{username}: {e}")
             logger.debug("Détails de l'erreur:", exc_info=True)
             return videos
@@ -208,22 +222,45 @@ class InstagramScraper:
 
         logger.info(f"📥 Récupération depuis {len(creators)} créateur(s) Instagram...")
 
+        # Récupérer le délai depuis la config (30-60 secondes par défaut)
+        min_delay = getattr(self.config, 'INSTAGRAM_MIN_DELAY_BETWEEN_CREATORS', 30)
+        max_delay = getattr(self.config, 'INSTAGRAM_MAX_DELAY_BETWEEN_CREATORS', 60)
+
         for i, creator in enumerate(creators):
             # Nettoyer le nom d'utilisateur (enlever @ si présent)
             creator = creator.lstrip('@')
 
             try:
+                logger.info(f"[{i+1}/{len(creators)}] Récupération de @{creator}...")
                 videos = self.get_user_videos(creator, count_per_creator)
                 all_videos.extend(videos)
 
-                # Pause entre créateurs pour éviter rate limiting
-                if i < len(creators) - 1 and videos:
-                    wait_time = 5
+                # Pause PLUS LONGUE entre créateurs pour éviter rate limiting
+                if i < len(creators) - 1:
+                    # Délai aléatoire pour paraître plus humain
+                    wait_time = random.randint(min_delay, max_delay)
                     logger.info(f"⏳ Pause de {wait_time} secondes avant le prochain créateur...")
+                    logger.info(f"   (Instagram limite les requêtes rapides)")
                     time.sleep(wait_time)
 
+            except (QueryReturnedBadRequestException, TooManyRequestsException):
+                # Rate limiting détecté, arrêter complètement
+                logger.error(f"⚠️  Rate limiting détecté lors du scraping de @{creator}")
+                logger.error(f"⚠️  Arrêt du scraping pour éviter le bannissement du compte")
+                logger.info(f"💡 {len(all_videos)} vidéos récupérées avant le rate limit")
+                break
+
             except Exception as e:
+                error_msg = str(e).lower()
+                # Détecter les erreurs 401 (rate limiting)
+                if '401' in error_msg or 'unauthorized' in error_msg or 'wait a few minutes' in error_msg:
+                    logger.error(f"⚠️  Rate limiting détecté lors du scraping de @{creator}")
+                    logger.error(f"⚠️  Arrêt du scraping pour éviter le bannissement du compte")
+                    logger.info(f"💡 {len(all_videos)} vidéos récupérées avant le rate limit")
+                    break
+
                 logger.error(f"❌ Erreur pour le créateur @{creator}: {e}")
+                logger.info(f"   Passage au créateur suivant...")
                 continue
 
         # Retirer les doublons basés sur l'ID

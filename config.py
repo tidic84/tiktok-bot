@@ -87,7 +87,16 @@ class Config:
             'bonappetitmag',         # Bon Appétit Magazine
             'thefeedfeed'            # The Feed Feed
         ]
-    
+
+    # Délais entre les créateurs Instagram (pour éviter rate limiting)
+    # Instagram limite fortement les requêtes - utilisez des délais longs !
+    # Recommandations :
+    # - 1-3 créateurs : 30-60 secondes (par défaut)
+    # - 4-9 créateurs : 60-120 secondes
+    # - 10+ créateurs : 120-180 secondes ou divisez en plusieurs sessions
+    INSTAGRAM_MIN_DELAY_BETWEEN_CREATORS = 30  # Minimum 30 secondes
+    INSTAGRAM_MAX_DELAY_BETWEEN_CREATORS = 60  # Maximum 60 secondes (aléatoire)
+
     # COMPATIBILITÉ: Alias pour TARGET_KEYWORDS
     @property
     def TARGET_HASHTAGS(self):

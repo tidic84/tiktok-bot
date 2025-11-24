@@ -137,6 +137,28 @@ Récupération des vidéos Instagram de @natgeo...
 
 ---
 
+## Configuration des délais (Rate Limiting)
+
+Pour éviter le rate limiting Instagram, le scraper attend **30-60 secondes** entre chaque créateur par défaut.
+
+Vous pouvez configurer ces délais dans `config.py` :
+
+```python
+# Délais entre les créateurs Instagram (en secondes)
+INSTAGRAM_MIN_DELAY_BETWEEN_CREATORS = 30  # Minimum
+INSTAGRAM_MAX_DELAY_BETWEEN_CREATORS = 60  # Maximum (aléatoire)
+```
+
+**⚠️ Important** : Ne réduisez pas ces délais, Instagram bannit les comptes qui font trop de requêtes !
+
+### Recommandations :
+
+- **1-3 créateurs** : Délais de 30-60 secondes (par défaut) ✅
+- **4-9 créateurs** : Augmentez à 60-120 secondes 🔶
+- **10+ créateurs** : Augmentez à 120-180 secondes ou divisez en plusieurs sessions 🔴
+
+---
+
 ## Problèmes courants
 
 ### "LoginRequiredException"
@@ -147,9 +169,21 @@ Récupération des vidéos Instagram de @natgeo...
 
 ➡️ **Solution** : Vérifiez que le nom d'utilisateur est correct (sans @)
 
+### "401 Unauthorized" ou "Please wait a few minutes"
+
+**C'est le rate limiting Instagram !**
+
+➡️ **Solutions** :
+1. **Attendez 1-2 heures** avant de réessayer
+2. **Réduisez le nombre de créateurs** à 1-2 pour tester
+3. **Augmentez les délais** dans `config.py` (voir section ci-dessus)
+4. **Utilisez un compte Instagram plus établi** (évitez les comptes neufs)
+
+Le scraper **arrêtera automatiquement** le scraping si rate limité pour protéger votre compte.
+
 ### "QueryReturnedBadRequestException" ou "429 Too Many Requests"
 
-➡️ **Solution** : Instagram a rate limité votre compte. Attendez 1-2 heures avant de réessayer.
+➡️ **Solution** : Identique à l'erreur 401 ci-dessus. Instagram limite votre compte.
 
 ### "Profil privé et non suivi"
 
