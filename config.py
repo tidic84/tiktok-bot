@@ -24,6 +24,11 @@ class Config:
     # Format JSON exporté depuis le navigateur (extension "Get cookies.txt" ou similaire)
     INSTAGRAM_COOKIES_FILE = os.getenv('INSTAGRAM_COOKIES_FILE', '')
 
+    # Fichier de session Instagram (RECOMMANDÉ, créé par instaloader)
+    # Créer avec: instaloader -l USERNAME
+    # Le fichier sera nommé automatiquement: session-USERNAME
+    INSTAGRAM_SESSION_FILE = os.getenv('INSTAGRAM_SESSION_FILE', '')
+
     # ========================================
     # PROXIES INSTAGRAM
     # ========================================
