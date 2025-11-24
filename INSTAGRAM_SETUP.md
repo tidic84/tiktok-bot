@@ -137,6 +137,87 @@ Récupération des vidéos Instagram de @natgeo...
 
 ---
 
+## Configuration des proxies (RECOMMANDÉ)
+
+**Les proxies sont la meilleure solution pour éviter le rate limiting Instagram !**
+
+### Pourquoi utiliser des proxies ?
+
+✅ **Éviter le rate limiting** : Chaque proxy a sa propre IP, donc pas de limite partagée
+✅ **Scraper plus de créateurs** : Rotation automatique entre proxies
+✅ **Protéger votre compte** : Instagram ne voit pas toujours la même IP
+✅ **Augmenter la vitesse** : Pas besoin d'attendre 1-2h après rate limit
+
+### ⚠️ Important : Type de proxies
+
+| Type | Recommandé pour Instagram ? | Raison |
+|------|---------------------------|--------|
+| **Proxies résidentiels** | ✅ OUI | IPs réelles, difficiles à détecter |
+| **Proxies datacenter** | ❌ NON | Instagram les bannit facilement |
+| **Proxies mobiles** | ✅ OUI | Excellents mais plus chers |
+
+**IMPORTANT** : N'utilisez **PAS** de proxies datacenter pour Instagram. Instagram les détecte et bannit rapidement.
+
+### Configuration
+
+#### Option 1 : Proxy unique
+
+Dans `.env` :
+
+```bash
+INSTAGRAM_PROXY=http://user:pass@123.45.67.89:8080
+```
+
+#### Option 2 : Rotation de proxies (RECOMMANDÉ)
+
+Dans `.env` (séparés par des virgules, **SANS espaces**) :
+
+```bash
+INSTAGRAM_PROXIES=http://user:pass@proxy1.com:8080,http://user:pass@proxy2.com:8080,http://user:pass@proxy3.com:8080
+```
+
+Le scraper changera automatiquement de proxy pour chaque créateur.
+
+#### Option 3 : Configuration directe dans config.py
+
+```python
+# Proxy unique
+INSTAGRAM_PROXY = 'http://user:pass@123.45.67.89:8080'
+
+# OU rotation de proxies
+INSTAGRAM_PROXIES = [
+    'http://user:pass@proxy1.com:8080',
+    'http://user:pass@proxy2.com:8080',
+    'http://user:pass@proxy3.com:8080',
+]
+```
+
+### Formats supportés
+
+- HTTP : `http://host:port`
+- HTTP avec auth : `http://user:pass@host:port`
+- HTTPS : `https://host:port`
+- HTTPS avec auth : `https://user:pass@host:port`
+
+### Recommandations
+
+- **Minimum 3-5 proxies** pour une rotation efficace
+- **Proxies résidentiels** uniquement (pas datacenter)
+- **Vérifiez vos proxies** avant de les utiliser (testez sur un site comme https://httpbin.org/ip)
+- **Évitez les proxies gratuits** : Instagram les bannit rapidement
+
+### Logs attendus avec proxies
+
+```
+🔄 Proxy configuré: http://user:***@123.45.67.89:8080
+   (Proxy 1/3 - rotation activée)
+[1/9] Rotation du proxy...
+🔄 Proxy configuré: http://user:***@98.76.54.32:8080
+   (Proxy 2/3 - rotation activée)
+```
+
+---
+
 ## Configuration des délais (Rate Limiting)
 
 Pour éviter le rate limiting Instagram, le scraper attend **30-60 secondes** entre chaque créateur par défaut.
@@ -174,12 +255,15 @@ INSTAGRAM_MAX_DELAY_BETWEEN_CREATORS = 60  # Maximum (aléatoire)
 **C'est le rate limiting Instagram !**
 
 ➡️ **Solutions** :
-1. **Attendez 1-2 heures** avant de réessayer
-2. **Réduisez le nombre de créateurs** à 1-2 pour tester
-3. **Augmentez les délais** dans `config.py` (voir section ci-dessus)
-4. **Utilisez un compte Instagram plus établi** (évitez les comptes neufs)
+1. 🌟 **MEILLEURE SOLUTION** : Configurez des **proxies résidentiels** (voir section "Configuration des proxies" ci-dessus)
+2. **Attendez 1-2 heures** avant de réessayer
+3. **Réduisez le nombre de créateurs** à 1-2 pour tester
+4. **Augmentez les délais** dans `config.py` (voir section ci-dessus)
+5. **Utilisez un compte Instagram plus établi** (évitez les comptes neufs)
 
 Le scraper **arrêtera automatiquement** le scraping si rate limité pour protéger votre compte.
+
+**Note** : Les proxies résidentiels éliminent pratiquement le rate limiting car chaque proxy a sa propre IP.
 
 ### "QueryReturnedBadRequestException" ou "429 Too Many Requests"
 

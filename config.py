@@ -23,7 +23,37 @@ class Config:
     # Fichier de cookies Instagram (optionnel, alternative à username/password)
     # Format JSON exporté depuis le navigateur (extension "Get cookies.txt" ou similaire)
     INSTAGRAM_COOKIES_FILE = os.getenv('INSTAGRAM_COOKIES_FILE', '')
-    
+
+    # ========================================
+    # PROXIES INSTAGRAM
+    # ========================================
+    # Les proxies aident à éviter le rate limiting et les bannissements Instagram
+    # RECOMMANDÉ: Utilisez des proxies RÉSIDENTIELS pour Instagram (pas datacenter)
+    # Instagram détecte et bannit facilement les proxies datacenter
+
+    # Option 1: Proxy unique
+    # Format: http://user:pass@host:port ou http://host:port
+    # Exemple: 'http://user:pass@123.45.67.89:8080'
+    INSTAGRAM_PROXY = os.getenv('INSTAGRAM_PROXY', '')
+
+    # Option 2: Rotation de proxies (liste de proxies)
+    # Le scraper changera de proxy pour chaque créateur
+    # Format: liste de proxies au format http://user:pass@host:port
+    # RECOMMANDÉ: Utilisez au moins 3-5 proxies résidentiels pour une rotation efficace
+    _instagram_proxies_env = os.getenv('INSTAGRAM_PROXIES', '')
+    if _instagram_proxies_env.strip():
+        # Charger depuis .env (séparés par des virgules)
+        INSTAGRAM_PROXIES = [p.strip() for p in _instagram_proxies_env.split(',') if p.strip()]
+    else:
+        # Pas de proxies par défaut - À configurer selon vos besoins
+        INSTAGRAM_PROXIES = []
+        # Exemples (NE PAS UTILISER TELS QUELS - remplacez par vos vrais proxies):
+        # INSTAGRAM_PROXIES = [
+        #     'http://user:pass@proxy1.example.com:8080',
+        #     'http://user:pass@proxy2.example.com:8080',
+        #     'http://user:pass@proxy3.example.com:8080',
+        # ]
+
     # Critères de sélection des vidéos (RÉDUITS pour avoir plus de résultats)
     MIN_LIKES = int(os.getenv('MIN_LIKES', 500))  # Réduit de 50000
     MIN_VIEWS = int(os.getenv('MIN_VIEWS', 1000))  # Réduit de 100000

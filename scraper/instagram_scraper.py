@@ -39,6 +39,9 @@ class InstagramScraper:
             quiet=True  # Réduire les logs d'instaloader
         )
 
+        # Configurer le proxy si disponible
+        self._setup_proxy()
+
         # Charger la session si disponible
         username = getattr(config, 'INSTAGRAM_USERNAME', None)
         password = getattr(config, 'INSTAGRAM_PASSWORD', None)
@@ -80,6 +83,61 @@ class InstagramScraper:
             logger.warning("⚠️  Instagram non authentifié!")
             logger.warning("   Ajoutez INSTAGRAM_USERNAME et INSTAGRAM_PASSWORD dans config.py")
             logger.warning("   OU créez une session avec: instaloader -l USERNAME")
+
+    def _setup_proxy(self):
+        """Configurer le proxy pour instaloader"""
+        # Récupérer la configuration proxy
+        proxy_list = getattr(self.config, 'INSTAGRAM_PROXIES', [])
+        single_proxy = getattr(self.config, 'INSTAGRAM_PROXY', None)
+
+        # Si un proxy unique est fourni, le convertir en liste
+        if single_proxy and not proxy_list:
+            proxy_list = [single_proxy]
+
+        if not proxy_list:
+            return  # Pas de proxy configuré
+
+        # Initialiser la rotation de proxies
+        self.proxy_list = proxy_list
+        self.proxy_index = 0
+        self.current_proxy = None
+
+        # Configurer le premier proxy
+        self._rotate_proxy()
+
+    def _rotate_proxy(self):
+        """Changer de proxy (rotation)"""
+        if not hasattr(self, 'proxy_list') or not self.proxy_list:
+            return
+
+        # Prendre le prochain proxy dans la liste
+        self.current_proxy = self.proxy_list[self.proxy_index]
+        self.proxy_index = (self.proxy_index + 1) % len(self.proxy_list)
+
+        # Configurer le proxy dans la session requests d'instaloader
+        # Format: http://user:pass@host:port ou http://host:port
+        proxies = {
+            'http': self.current_proxy,
+            'https': self.current_proxy,
+        }
+
+        # Modifier la session requests d'instaloader
+        self.loader.context._session.proxies.update(proxies)
+
+        # Masquer le mot de passe dans les logs
+        proxy_display = self.current_proxy
+        if '@' in proxy_display:
+            # Format: http://user:pass@host:port -> http://user:***@host:port
+            parts = proxy_display.split('@')
+            if len(parts) == 2:
+                credentials = parts[0].split('//')[-1]
+                if ':' in credentials:
+                    user = credentials.split(':')[0]
+                    proxy_display = proxy_display.replace(credentials, f"{user}:***")
+
+        logger.info(f"🔄 Proxy configuré: {proxy_display}")
+        if len(self.proxy_list) > 1:
+            logger.info(f"   (Proxy {self.proxy_index}/{len(self.proxy_list)} - rotation activée)")
 
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """
@@ -229,6 +287,11 @@ class InstagramScraper:
         for i, creator in enumerate(creators):
             # Nettoyer le nom d'utilisateur (enlever @ si présent)
             creator = creator.lstrip('@')
+
+            # Rotation de proxy si plusieurs proxies configurés
+            if hasattr(self, 'proxy_list') and len(self.proxy_list) > 1:
+                logger.info(f"[{i+1}/{len(creators)}] Rotation du proxy...")
+                self._rotate_proxy()
 
             try:
                 logger.info(f"[{i+1}/{len(creators)}] Récupération de @{creator}...")
