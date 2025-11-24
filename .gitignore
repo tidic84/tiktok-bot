@@ -17,6 +17,7 @@ tiktok_cookies.pkl
 downloaded_videos/
 logs/
 tiktok_cookies.json
+*.session
 
 # IDE
 .vscode/
