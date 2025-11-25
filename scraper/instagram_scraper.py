@@ -3,6 +3,7 @@ import logging
 from typing import List, Dict
 import time
 import random
+import os
 
 import instaloader
 from instaloader import Instaloader, Profile, Post, RateController
@@ -137,15 +138,17 @@ class InstagramScraper:
         self.current_proxy = self.proxy_list[self.proxy_index]
         self.proxy_index = (self.proxy_index + 1) % len(self.proxy_list)
 
-        # Configurer le proxy dans la session requests d'instaloader
-        # Format: http://user:pass@host:port ou http://host:port
+        # IMPORTANT: Configurer le proxy via variables d'environnement
+        # C'est la SEULE méthode qui fonctionne correctement avec instaloader
+        os.environ['HTTP_PROXY'] = self.current_proxy
+        os.environ['HTTPS_PROXY'] = self.current_proxy
+
+        # Aussi mettre à jour la session (au cas où)
         proxies = {
             'http': self.current_proxy,
             'https': self.current_proxy,
         }
-
-        # Modifier la session requests d'instaloader
-        self.loader.context._session.proxies.update(proxies)
+        self.loader.context._session.proxies = proxies
 
         # Masquer le mot de passe dans les logs
         proxy_display = self.current_proxy
