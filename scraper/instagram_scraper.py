@@ -150,6 +150,14 @@ class InstagramScraper:
         }
         self.loader.context._session.proxies = proxies
 
+        # CRITIQUE: Désactiver la vérification SSL pour les proxies
+        # Les proxies (Bright Data, etc.) utilisent leurs propres certificats SSL
+        self.loader.context._session.verify = False
+
+        # Désactiver les warnings SSL
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
         # Masquer le mot de passe dans les logs
         proxy_display = self.current_proxy
         if '@' in proxy_display:
