@@ -132,6 +132,13 @@ class Config:
     INSTAGRAM_MIN_DELAY_BETWEEN_CREATORS = 30  # Minimum 30 secondes
     INSTAGRAM_MAX_DELAY_BETWEEN_CREATORS = 60  # Maximum 60 secondes (aléatoire)
 
+    # Délais entre les POSTS Instagram (CRITIQUE pour éviter rate limiting)
+    # Instagram détecte si on parcourt les posts trop vite
+    # Chaque post = 1 requête API, donc il faut des délais
+    # IMPORTANT: Ne réduisez PAS ces valeurs, Instagram bannit sinon !
+    INSTAGRAM_MIN_DELAY_BETWEEN_POSTS = 3  # Minimum 3 secondes entre posts
+    INSTAGRAM_MAX_DELAY_BETWEEN_POSTS = 7  # Maximum 7 secondes entre posts
+
     # COMPATIBILITÉ: Alias pour TARGET_KEYWORDS
     @property
     def TARGET_HASHTAGS(self):

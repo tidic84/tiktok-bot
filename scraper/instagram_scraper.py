@@ -5,7 +5,7 @@ import time
 import random
 
 import instaloader
-from instaloader import Instaloader, Profile, Post
+from instaloader import Instaloader, Profile, Post, RateController
 from instaloader.exceptions import (
     ProfileNotExistsException,
     LoginRequiredException,
@@ -15,6 +15,24 @@ from instaloader.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ConservativeRateController(RateController):
+    """RateController très conservateur pour éviter le rate limiting Instagram"""
+
+    def sleep(self, secs):
+        """Dormir avec un multiplicateur pour être plus conservateur"""
+        # Multiplier par 2-3 le temps de sleep recommandé par instaloader
+        actual_sleep = secs * random.uniform(2.0, 3.0)
+        logger.debug(f"Sleep {actual_sleep:.1f}s (recommandé: {secs}s)")
+        time.sleep(actual_sleep)
+
+    def count_per_slidingwindow(self, query_type):
+        """Réduire le nombre de requêtes par fenêtre glissante"""
+        # Instaloader par défaut permet ~200 requêtes/heure
+        # On divise par 4 pour être ultra conservateur : ~50 requêtes/heure
+        default_count = super().count_per_slidingwindow(query_type)
+        return max(1, default_count // 4)
 
 
 class InstagramScraper:
@@ -28,6 +46,8 @@ class InstagramScraper:
             config: Objet de configuration
         """
         self.config = config
+
+        # Utiliser un RateController conservateur
         self.loader = Instaloader(
             download_pictures=False,
             download_videos=False,
@@ -36,8 +56,11 @@ class InstagramScraper:
             download_comments=False,
             save_metadata=False,
             compress_json=False,
-            quiet=True  # Réduire les logs d'instaloader
+            quiet=True,  # Réduire les logs d'instaloader
+            rate_controller=lambda ctx: ConservativeRateController(ctx)
         )
+
+        logger.info("✓ RateController conservateur activé (délais x2-3)")
 
         # Configurer le proxy si disponible
         self._setup_proxy()
@@ -174,13 +197,23 @@ class InstagramScraper:
                 logger.warning(f"⚠️  Profil @{username} est privé et non suivi")
                 return videos
 
-            # Parcourir les posts du profil
+            # Parcourir les posts du profil LENTEMENT
             video_count = 0
             post_count = 0
             max_posts = count * 3  # Parcourir plus de posts pour trouver assez de vidéos
 
+            # Délais entre posts (configuration)
+            min_delay_between_posts = getattr(self.config, 'INSTAGRAM_MIN_DELAY_BETWEEN_POSTS', 3)
+            max_delay_between_posts = getattr(self.config, 'INSTAGRAM_MAX_DELAY_BETWEEN_POSTS', 7)
+
             for post in profile.get_posts():
                 post_count += 1
+
+                # IMPORTANT: Délai AVANT de traiter chaque post (sauf le premier)
+                if post_count > 1:
+                    delay = random.uniform(min_delay_between_posts, max_delay_between_posts)
+                    logger.debug(f"Pause {delay:.1f}s avant post #{post_count}")
+                    time.sleep(delay)
 
                 # Limiter le nombre de posts parcourus
                 if post_count > max_posts:
