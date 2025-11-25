@@ -48,6 +48,25 @@ class InstagramScraper:
         """
         self.config = config
 
+        # CRITIQUE: Monkeypatch requests AVANT de créer l'Instaloader
+        # Pour désactiver SSL avec les proxies (Bright Data, etc.)
+        import requests
+        import urllib3
+
+        # Sauvegarder la méthode originale
+        original_request = requests.Session.request
+
+        # Créer une version qui force verify=False
+        def patched_request(self, method, url, **kwargs):
+            kwargs['verify'] = False
+            return original_request(self, method, url, **kwargs)
+
+        # Appliquer le patch
+        requests.Session.request = patched_request
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        logger.info("✓ SSL désactivé globalement pour les proxies")
+
         # Utiliser un RateController conservateur
         self.loader = Instaloader(
             download_pictures=False,
@@ -62,12 +81,6 @@ class InstagramScraper:
         )
 
         logger.info("✓ RateController conservateur activé (délais x2-3)")
-
-        # CRITIQUE: Désactiver vérification SSL IMMÉDIATEMENT
-        # Pour les proxies (Bright Data, etc.) qui utilisent leurs propres certificats
-        self.loader.context._session.verify = False
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         # Configurer le proxy si disponible
         self._setup_proxy()
