@@ -63,6 +63,12 @@ class InstagramScraper:
 
         logger.info("✓ RateController conservateur activé (délais x2-3)")
 
+        # CRITIQUE: Désactiver vérification SSL IMMÉDIATEMENT
+        # Pour les proxies (Bright Data, etc.) qui utilisent leurs propres certificats
+        self.loader.context._session.verify = False
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
         # Configurer le proxy si disponible
         self._setup_proxy()
 
@@ -149,14 +155,6 @@ class InstagramScraper:
             'https': self.current_proxy,
         }
         self.loader.context._session.proxies = proxies
-
-        # CRITIQUE: Désactiver la vérification SSL pour les proxies
-        # Les proxies (Bright Data, etc.) utilisent leurs propres certificats SSL
-        self.loader.context._session.verify = False
-
-        # Désactiver les warnings SSL
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         # Masquer le mot de passe dans les logs
         proxy_display = self.current_proxy
