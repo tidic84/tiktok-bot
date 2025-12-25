@@ -1,6 +1,6 @@
 """Scraper Instagram utilisant instaloader pour récupérer des vidéos"""
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 import time
 import random
 import os
@@ -48,6 +48,11 @@ class InstagramScraper:
         """
         self.config = config
 
+        # Créer le dossier de téléchargement
+        from pathlib import Path
+        self.download_folder = Path(config.DOWNLOAD_FOLDER)
+        self.download_folder.mkdir(exist_ok=True)
+
         # CRITIQUE: Monkeypatch requests AVANT de créer l'Instaloader
         # Pour désactiver SSL avec les proxies (Bright Data, etc.)
         import requests
@@ -70,7 +75,7 @@ class InstagramScraper:
         # Utiliser un RateController conservateur
         self.loader = Instaloader(
             download_pictures=False,
-            download_videos=False,
+            download_videos=False,  # DÉSACTIVER - on télécharge manuellement pour éviter les problèmes
             download_video_thumbnails=False,
             download_geotags=False,
             download_comments=False,
@@ -82,50 +87,28 @@ class InstagramScraper:
 
         logger.info("✓ RateController conservateur activé (délais x2-3)")
 
+        # NE PAS configurer de headers personnalisés pour GraphQL
+        # Les proxies Bright Data ont des règles strictes sur les headers
+        # Laisser instaloader gérer les headers par défaut
+        # On configurera des headers spécifiques seulement pour le téléchargement des vidéos
+
+        logger.info("✓ Configuration initiale terminée")
+
         # Configurer le proxy si disponible
         self._setup_proxy()
 
-        # Charger la session si disponible
-        username = getattr(config, 'INSTAGRAM_USERNAME', None)
-        password = getattr(config, 'INSTAGRAM_PASSWORD', None)
-        session_file = getattr(config, 'INSTAGRAM_SESSION_FILE', None)
+        # MODE ANONYME: Ne pas utiliser d'authentification pour éviter les rate limits
+        # Les profils publics peuvent être scrapés sans authentification
+        # Cela contourne le rate limit actuel sur le compte authentifié
 
         self.authenticated = False
 
-        # Méthode 1 : Charger depuis un fichier de session
-        if session_file and username:
-            try:
-                logger.info(f"Chargement de la session Instagram pour {username}...")
-                self.loader.load_session_from_file(username, session_file)
-                self.authenticated = True
-                logger.info("✓ Session Instagram chargée avec succès")
-            except FileNotFoundError:
-                logger.warning(f"⚠️  Fichier de session non trouvé: {session_file}")
-            except Exception as e:
-                logger.warning(f"⚠️  Erreur chargement session: {e}")
+        logger.warning("⚠️  Mode ANONYME activé (pas d'authentification)")
+        logger.info("   Les profils privés ne seront pas accessibles")
+        logger.info("   Mais les profils publics fonctionneront sans rate limit")
 
-        # Méthode 2 : Se connecter avec username/password
-        if not self.authenticated and username and password:
-            try:
-                logger.info(f"Connexion à Instagram avec {username}...")
-                self.loader.login(username, password)
-                self.authenticated = True
-                logger.info("✓ Connexion Instagram réussie")
-
-                # Sauvegarder la session pour les prochaines fois
-                if session_file:
-                    try:
-                        self.loader.save_session_to_file(session_file)
-                        logger.info(f"✓ Session sauvegardée dans {session_file}")
-                    except Exception as e:
-                        logger.debug(f"Impossible de sauvegarder la session: {e}")
-            except Exception as e:
-                logger.error(f"❌ Erreur de connexion Instagram: {e}")
-
-        if not self.authenticated:
-            logger.warning("⚠️  Instagram non authentifié!")
-            logger.warning("   Ajoutez INSTAGRAM_USERNAME et INSTAGRAM_PASSWORD dans config.py")
-            logger.warning("   OU créez une session avec: instaloader -l USERNAME")
+        # Note: On pourrait réactiver l'authentification plus tard
+        # Pour l'instant, on privilégie le fonctionnement immédiat
 
     def _setup_proxy(self):
         """Configurer le proxy pour instaloader"""
@@ -184,6 +167,189 @@ class InstagramScraper:
         if len(self.proxy_list) > 1:
             logger.info(f"   (Proxy {self.proxy_index}/{len(self.proxy_list)} - rotation activée)")
 
+    def _download_video_with_instaloader(self, post: Post, video_data: Dict) -> Optional[str]:
+        """
+        Télécharger une vidéo Instagram directement via l'URL
+
+        Args:
+            post: Objet Post d'instaloader
+            video_data: Dictionnaire de données de la vidéo
+
+        Returns:
+            Chemin local du fichier téléchargé ou None si échec
+        """
+        import requests
+        from pathlib import Path
+
+        try:
+            # Obtenir l'URL de la vidéo
+            video_url = post.video_url
+            if not video_url:
+                logger.warning(f"Pas d'URL vidéo pour {post.shortcode}")
+                return None
+
+            # Générer un nom de fichier propre
+            desc = video_data.get('desc', '')
+            filename = self._sanitize_filename(desc)
+
+            # Si le nom est vide ou générique, utiliser des emojis
+            if not filename or filename == 'video' or len(filename) < 3:
+                filename = self._generate_emoji_name()
+
+            # Chemin final
+            final_path = self.download_folder / f"{filename}.mp4"
+
+            # Gérer les collisions de noms
+            if final_path.exists():
+                counter = 1
+                while final_path.exists():
+                    final_path = self.download_folder / f"{filename}_{counter}.mp4"
+                    counter += 1
+
+            # Télécharger directement avec requests
+            # Utiliser les proxies configurés et désactiver SSL
+            proxies = {
+                'http': self.current_proxy,
+                'https': self.current_proxy,
+            } if hasattr(self, 'current_proxy') and self.current_proxy else None
+
+            # Headers pour simuler un navigateur et éviter les erreurs 502
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Referer': f'https://www.instagram.com/p/{post.shortcode}/',
+                'Origin': 'https://www.instagram.com',
+                'Sec-Fetch-Dest': 'video',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+            }
+
+            logger.debug(f"Téléchargement direct de {video_url[:80]}...")
+
+            # Essayer d'abord avec proxy
+            try:
+                response = requests.get(
+                    video_url,
+                    headers=headers,
+                    proxies=proxies,
+                    verify=False,  # Désactiver SSL
+                    stream=True,
+                    timeout=60
+                )
+                response.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                # Si erreur 402 (proxy rejected), réessayer sans proxy
+                if '402' in str(e):
+                    logger.debug(f"Erreur 402 avec proxy, retry sans proxy...")
+                    response = requests.get(
+                        video_url,
+                        headers=headers,
+                        proxies=None,  # Sans proxy
+                        verify=False,
+                        stream=True,
+                        timeout=60
+                    )
+                    response.raise_for_status()
+                else:
+                    raise
+
+            # Écrire le fichier
+            with open(final_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            file_size = final_path.stat().st_size / (1024 * 1024)
+
+            if file_size < 0.1:  # Fichier trop petit, probablement une erreur
+                logger.warning(f"Fichier trop petit ({file_size:.2f} MB), probablement invalide")
+                final_path.unlink()
+                return None
+
+            logger.info(f"✓ Vidéo {post.shortcode} téléchargée ({file_size:.2f} MB) -> {final_path.name}")
+            return str(final_path.absolute())
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erreur HTTP lors du téléchargement de {post.shortcode}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Erreur téléchargement vidéo {post.shortcode}: {e}")
+            logger.debug(f"Détails:", exc_info=True)
+            return None
+
+    def _sanitize_filename(self, text: str, max_length: int = 50) -> str:
+        """
+        Nettoyer un texte pour en faire un nom de fichier valide
+
+        Args:
+            text: Texte à nettoyer
+            max_length: Longueur max du nom
+
+        Returns:
+            Nom de fichier nettoyé
+        """
+        import re
+
+        if not text:
+            return "video"
+
+        # Supprimer les hashtags pour le nom de fichier (garder les emojis)
+        text = re.sub(r'#\w+', '', text)  # Supprimer hashtags
+        text = re.sub(r'[^\w\s\U0001F300-\U0001F9FF-]', '', text)  # Garder alphanumériques, espaces et emojis
+        text = re.sub(r'\s+', ' ', text.strip())  # Normaliser espaces
+        text = text[:max_length]  # Limiter la longueur
+
+        return text if text else "video"
+
+    def _generate_emoji_name(self) -> str:
+        """
+        Générer un nom basé sur des vrais emojis aléatoires
+
+        Returns:
+            Chaîne d'emojis pour le nom de fichier
+        """
+        import random
+
+        # Liste d'emojis populaires sur Instagram
+        emojis = [
+            '🔥', '⭐', '❤️', '✨', '🚀',
+            '💃', '🎵', '📹', '🔝', '💯',
+            '😎', '🤩', '👏', '💪', '🎉'
+        ]
+
+        # Choisir 3-5 emojis au hasard
+        num_emojis = random.randint(3, 5)
+        selected = random.sample(emojis, num_emojis)
+
+        return ''.join(selected)
+
+    def _disable_proxy_temporarily(self):
+        """Désactiver temporairement le proxy pour les requêtes GraphQL"""
+        if 'HTTP_PROXY' in os.environ:
+            self._saved_http_proxy = os.environ.pop('HTTP_PROXY', None)
+        if 'HTTPS_PROXY' in os.environ:
+            self._saved_https_proxy = os.environ.pop('HTTPS_PROXY', None)
+
+        # Sauvegarder et retirer les proxies de la session
+        self._saved_session_proxies = self.loader.context._session.proxies.copy()
+        self.loader.context._session.proxies = {}
+
+        logger.debug("🔓 Proxies désactivés temporairement pour GraphQL")
+
+    def _restore_proxy(self):
+        """Restaurer les proxies après les requêtes GraphQL"""
+        if hasattr(self, '_saved_http_proxy') and self._saved_http_proxy:
+            os.environ['HTTP_PROXY'] = self._saved_http_proxy
+        if hasattr(self, '_saved_https_proxy') and self._saved_https_proxy:
+            os.environ['HTTPS_PROXY'] = self._saved_https_proxy
+
+        if hasattr(self, '_saved_session_proxies'):
+            self.loader.context._session.proxies = self._saved_session_proxies
+
+        logger.debug("🔒 Proxies restaurés pour le téléchargement")
+
     def get_user_videos(self, username: str, count: int = 10) -> List[Dict]:
         """
         Récupérer les vidéos d'un utilisateur Instagram
@@ -200,18 +366,44 @@ class InstagramScraper:
         try:
             logger.info(f"Récupération des vidéos Instagram de @{username}...")
 
-            # Récupérer le profil
-            try:
-                profile = Profile.from_username(self.loader.context, username)
-            except ProfileNotExistsException:
-                logger.warning(f"❌ Profil @{username} n'existe pas")
-                return videos
-            except LoginRequiredException:
-                logger.error("❌ Authentification requise pour accéder à ce profil")
-                logger.error("   Configurez INSTAGRAM_USERNAME et INSTAGRAM_PASSWORD")
-                return videos
-            except Exception as e:
-                logger.error(f"❌ Erreur lors de l'accès au profil @{username}: {e}")
+            # IMPORTANT: Désactiver les proxies pour les requêtes GraphQL
+            # Les proxies Bright Data rejettent les requêtes GraphQL avec "Bad headers: referer"
+            # On utilisera les proxies SEULEMENT pour télécharger les vidéos
+            self._disable_proxy_temporarily()
+
+            # Récupérer le profil avec retry en cas de rate limit temporaire
+            max_retries = 3
+            retry_delay = 60  # 60 secondes entre les retries
+            profile = None
+
+            for attempt in range(max_retries):
+                try:
+                    profile = Profile.from_username(self.loader.context, username)
+                    break  # Succès, sortir de la boucle
+                except ProfileNotExistsException:
+                    logger.warning(f"❌ Profil @{username} n'existe pas")
+                    return videos
+                except LoginRequiredException:
+                    logger.error("❌ Authentification requise pour accéder à ce profil")
+                    logger.error("   Configurez INSTAGRAM_USERNAME et INSTAGRAM_PASSWORD")
+                    return videos
+                except ConnectionException as e:
+                    error_msg = str(e).lower()
+                    # Détecter rate limiting
+                    if ('401' in error_msg or 'wait a few minutes' in error_msg) and attempt < max_retries - 1:
+                        logger.warning(f"⏳ Rate limit détecté (tentative {attempt + 1}/{max_retries})")
+                        logger.info(f"   Attente de {retry_delay} secondes avant nouvelle tentative...")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        logger.error(f"❌ Erreur de connexion: {e}")
+                        return videos
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de l'accès au profil @{username}: {e}")
+                    return videos
+
+            if not profile:
+                logger.error(f"❌ Impossible de récupérer le profil @{username} après {max_retries} tentatives")
                 return videos
 
             # Vérifier si le profil est privé
@@ -247,7 +439,7 @@ class InstagramScraper:
                     continue
 
                 try:
-                    # Extraire les métadonnées
+                    # Extraire les métadonnées AVANT de télécharger
                     video_data = {
                         'id': post.shortcode,
                         'author': username,
@@ -256,11 +448,12 @@ class InstagramScraper:
                         'views': post.video_view_count if post.video_view_count else 0,
                         'shares': 0,  # Instagram ne fournit pas ce chiffre
                         'comments': post.comments,
-                        'video_url': post.video_url,
+                        'video_url': post.video_url,  # Garder l'URL pour référence
                         'music': None,
                         'create_time': int(post.date_utc.timestamp()),
                         'platform': 'instagram',
-                        'engagement_rate': 0.0
+                        'engagement_rate': 0.0,
+                        'local_path': None  # Sera rempli après téléchargement
                     }
 
                     # Calculer le taux d'engagement
@@ -269,9 +462,6 @@ class InstagramScraper:
                             (video_data['likes'] + video_data['comments']) / video_data['views']
                         )
 
-                    videos.append(video_data)
-                    video_count += 1
-
                     logger.debug(
                         f"✓ Vidéo {post.shortcode}: "
                         f"{video_data['likes']:,} likes, "
@@ -279,32 +469,49 @@ class InstagramScraper:
                         f"{video_data['comments']:,} commentaires"
                     )
 
+                    # TÉLÉCHARGER la vidéo IMMÉDIATEMENT avec instaloader
+                    local_path = self._download_video_with_instaloader(post, video_data)
+
+                    if local_path:
+                        video_data['local_path'] = local_path
+                        videos.append(video_data)
+                        video_count += 1
+                    else:
+                        logger.warning(f"⚠️  Échec du téléchargement de {post.shortcode}, ignorée")
+
                     # Arrêter si on a assez de vidéos
                     if video_count >= count:
                         break
 
                 except Exception as e:
-                    logger.debug(f"Erreur extraction post {post.shortcode}: {e}")
+                    logger.debug(f"Erreur extraction/téléchargement post {post.shortcode}: {e}")
                     continue
+
+            # Restaurer les proxies
+            self._restore_proxy()
 
             logger.info(f"✓ {len(videos)} vidéos Instagram récupérées de @{username}")
             return videos
 
         except QueryReturnedBadRequestException as e:
+            self._restore_proxy()
             logger.error(f"❌ Instagram a retourné une erreur (rate limit?): {e}")
             logger.info("💡 Attendez quelques minutes avant de réessayer")
             raise  # Propager l'erreur pour arrêter le scraping
 
         except TooManyRequestsException as e:
+            self._restore_proxy()
             logger.error(f"❌ Rate limit Instagram détecté: {e}")
             logger.info("💡 Instagram limite le nombre de requêtes. Attendez 1-2 heures.")
             raise  # Propager l'erreur pour arrêter le scraping
 
         except ConnectionException as e:
+            self._restore_proxy()
             logger.error(f"❌ Erreur de connexion Instagram: {e}")
             return videos
 
         except Exception as e:
+            self._restore_proxy()
             error_msg = str(e).lower()
             # Détecter les erreurs 401 (rate limiting)
             if '401' in error_msg or 'unauthorized' in error_msg or 'wait a few minutes' in error_msg:

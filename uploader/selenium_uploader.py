@@ -218,7 +218,13 @@ class SeleniumUploader:
         """Initialiser le navigateur Chrome avec Selenium"""
         try:
             logger.info("Initialisation du navigateur Chrome...")
-            
+
+            # CRITIQUE: Nettoyer les variables proxy d'Instagram
+            # Sinon Selenium essaie d'utiliser les proxies Bright Data et échoue avec "Bad Port"
+            saved_http_proxy = os.environ.pop('HTTP_PROXY', None)
+            saved_https_proxy = os.environ.pop('HTTPS_PROXY', None)
+            logger.debug("Variables proxy temporairement désactivées pour Selenium")
+
             options = webdriver.ChromeOptions()
             
             # Options pour éviter la détection
@@ -262,7 +268,14 @@ class SeleniumUploader:
             # Initialiser le driver
             service = Service(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=options)
-            
+
+            # Restaurer les variables proxy pour Instagram (si besoin plus tard)
+            if saved_http_proxy:
+                os.environ['HTTP_PROXY'] = saved_http_proxy
+            if saved_https_proxy:
+                os.environ['HTTPS_PROXY'] = saved_https_proxy
+            logger.debug("Variables proxy restaurées")
+
             # Modifier webdriver property + navigator pour éviter détection
             self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
                 'source': '''

@@ -70,30 +70,42 @@ class VideoDownloader:
     
     def download_video(self, video_data: Dict) -> Optional[str]:
         """
-        Télécharger une vidéo TikTok
-        
+        Télécharger une vidéo TikTok ou gérer les vidéos Instagram déjà téléchargées
+
         Args:
             video_data: Dictionnaire contenant les données de la vidéo
-            
+
         Returns:
             Chemin local du fichier téléchargé ou None si échec
         """
         video_id = video_data.get('id')
+        platform = video_data.get('platform', 'tiktok')
+
+        # INSTAGRAM: Si la vidéo a déjà été téléchargée par le scraper
+        if platform == 'instagram' and video_data.get('local_path'):
+            local_path = video_data.get('local_path')
+            if Path(local_path).exists():
+                logger.info(f"✓ Vidéo Instagram {video_id} déjà téléchargée par le scraper")
+                return local_path
+            else:
+                logger.warning(f"⚠️  Chemin local {local_path} n'existe plus pour {video_id}")
+
+        # TIKTOK ou INSTAGRAM sans local_path: Téléchargement classique
         author = video_data.get('author', 'unknown')
         desc = video_data.get('desc', '')
-        
+
         # Créer un nom de fichier basé sur la description
         clean_desc = self._sanitize_filename(desc, max_length=50)
-        
+
         # Si la description est vide après nettoyage, utiliser des emojis
         if clean_desc == "video" or not clean_desc or len(clean_desc) < 3:
             clean_desc = self._generate_emoji_name()
             logger.debug(f"Description vide, génération nom emojis: {clean_desc}")
-        
+
         # Nom de fichier : description SEULEMENT (sans ID, sans underscore)
         filename = f"{clean_desc}.mp4"
         filepath = self.download_folder / filename
-        
+
         # Si le fichier existe déjà (collision), ajouter un suffixe
         if filepath.exists():
             counter = 1
@@ -102,22 +114,22 @@ class VideoDownloader:
                 filepath = self.download_folder / filename
                 counter += 1
             logger.debug(f"Nom existant, suffixe ajouté: {filename}")
-        
+
         # Vérifier si le fichier existe déjà
         if filepath.exists():
             logger.info(f"Vidéo {video_id} déjà téléchargée")
             return str(filepath.absolute())
-        
+
         # Méthode 1 : Essayer avec yt-dlp (pour TikTok et Instagram)
         video_url = video_data.get('video_url')
         if self._download_with_ytdlp(video_id, author, filepath, video_url):
             return str(filepath.absolute())
-        
+
         # Méthode 2 : Fallback avec requests si URL disponible
         video_url = video_data.get('video_url')
         if video_url and self._download_with_requests(video_id, video_url, filepath):
             return str(filepath.absolute())
-        
+
         logger.error(f"Échec du téléchargement de {video_id} avec toutes les méthodes")
         return None
     

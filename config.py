@@ -171,8 +171,9 @@ class Config:
     HASHTAG_VIDEOS_COUNT = 10  # Réduit de 30
     
     # Traitement vidéo (pour éviter détection de contenu dupliqué)
-    PROCESS_VIDEOS = True  # Modifier les vidéos avant upload
-    ADD_WATERMARK = True   # Ajouter un watermark discret (ACTIVÉ pour plus d'unicité)
+    # NOTE: FFmpeg requis pour le traitement. Si pas installé, les vidéos originales seront utilisées
+    PROCESS_VIDEOS = False  # Désactivé temporairement (FFmpeg non installé)
+    ADD_WATERMARK = False   # Désactivé temporairement
     WATERMARK_TEXT = "🔥"  # Emoji discret (changez si vous voulez)
     
     # Nettoyage automatique des vieilles vidéos
