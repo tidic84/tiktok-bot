@@ -42,37 +42,6 @@ class TikTokScraper:
             logger.error(f"Erreur lors de l'initialisation de l'API TikTok: {e}")
             raise
     
-    async def get_trending_videos(self, count: int = 50) -> List[Dict]:
-        """
-        Récupérer les vidéos tendances
-        
-        Args:
-            count: Nombre de vidéos à récupérer
-            
-        Returns:
-            Liste de dictionnaires contenant les données des vidéos
-        """
-        if not self.api:
-            logger.error("API non initialisée. Appelez initialize() d'abord.")
-            return []
-        
-        videos = []
-        try:
-            logger.info(f"Récupération de {count} vidéos tendances...")
-            async for video in self.api.trending.videos(count=count):
-                try:
-                    video_data = self._extract_video_data(video)
-                    videos.append(video_data)
-                except Exception as e:
-                    logger.warning(f"Erreur lors de l'extraction d'une vidéo: {e}")
-                    continue
-            
-            logger.info(f"✓ {len(videos)} vidéos tendances récupérées")
-            return videos
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des vidéos tendances: {e}")
-            return videos
-    
     async def search_by_keyword(self, keyword: str, count: int = 30) -> List[Dict]:
         """
         Rechercher des vidéos par mot-clé (plus fiable que hashtag)
@@ -221,37 +190,7 @@ class TikTokScraper:
         logger.info(f"📊 Total: {len(unique_videos)} vidéos uniques récupérées pour les hashtags configurés")
         
         return list(unique_videos)
-    
-    async def get_all_videos(self) -> List[Dict]:
-        """
-        Récupérer toutes les vidéos (trending + hashtags)
-        
-        Returns:
-            Liste combinée de toutes les vidéos
-        """
-        all_videos = []
-        
-        # Récupérer les vidéos trending
-        trending = await self.get_trending_videos(self.config.TRENDING_VIDEOS_COUNT)
-        all_videos.extend(trending)
-        
-        # Récupérer les vidéos par hashtag
-        for hashtag in self.config.TARGET_HASHTAGS:
-            hashtag_videos = await self.search_by_hashtag(
-                hashtag, 
-                self.config.HASHTAG_VIDEOS_COUNT
-            )
-            all_videos.extend(hashtag_videos)
-            
-            # Petite pause entre les hashtags
-            await asyncio.sleep(2)
-        
-        # Retirer les doublons basés sur l'ID
-        unique_videos = {v['id']: v for v in all_videos}.values()
-        logger.info(f"Total: {len(unique_videos)} vidéos uniques récupérées")
-        
-        return list(unique_videos)
-    
+
     async def close(self):
         """Fermer les sessions de l'API"""
         if self.api:

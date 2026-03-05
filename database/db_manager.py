@@ -44,24 +44,7 @@ class DatabaseManager:
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
         logger.info("Base de données initialisée")
-    
-    def is_video_processed(self, video_id: str) -> bool:
-        """
-        Vérifier si une vidéo a déjà été traitée (uploadée)
-        
-        Une vidéo n'est considérée comme "traitée" que si elle a été UPLOADÉE.
-        Les vidéos téléchargées mais non uploadées peuvent être retraitées.
-        
-        Args:
-            video_id: ID de la vidéo TikTok
-            
-        Returns:
-            True si la vidéo a déjà été uploadée
-        """
-        video = self.session.query(ProcessedVideo).filter_by(id=video_id).first()
-        # Seules les vidéos UPLOADÉES sont considérées comme traitées
-        return video is not None and video.is_uploaded
-    
+
     def add_video(self, video_data: Dict) -> bool:
         """
         Ajouter une vidéo à la base de données
@@ -157,42 +140,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Erreur lors du comptage des uploads: {e}")
             return 0
-    
-    def get_recent_uploaded_ids(self, limit: Optional[int] = None) -> Set[str]:
-        """
-        Récupérer les identifiants des vidéos déjà uploadées récemment.
-        
-        Args:
-            limit: Nombre maximum d'identifiants à retourner (None pour tout récupérer)
-            
-        Returns:
-            Ensemble des identifiants de vidéos marquées comme uploadées
-        """
-        try:
-            query = self.session.query(ProcessedVideo.id).filter(
-                ProcessedVideo.is_uploaded == True
-            )
-            if limit is not None:
-                query = query.order_by(ProcessedVideo.uploaded_at.desc()).limit(limit)
-            return {row[0] for row in query.all()}
-        except Exception as e:
-            logger.error(f"Erreur lors de la récupération des vidéos uploadées: {e}")
-            return set()
-    
-    def get_all_processed_videos(self, limit: int = 100) -> List[ProcessedVideo]:
-        """
-        Obtenir toutes les vidéos traitées
-        
-        Args:
-            limit: Nombre maximum de vidéos à retourner
-            
-        Returns:
-            Liste des vidéos traitées
-        """
-        return self.session.query(ProcessedVideo).order_by(
-            ProcessedVideo.downloaded_at.desc()
-        ).limit(limit).all()
-    
+
     def is_video_uploaded(self, video_id: str) -> bool:
         """
         Vérifier si une vidéo a déjà été uploadée

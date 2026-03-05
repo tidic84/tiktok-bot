@@ -121,21 +121,7 @@ class VideoFilter:
             )
         
         return quality_videos
-    
-    def get_top_videos(self, videos: List[Dict], count: int = 10) -> List[Dict]:
-        """
-        Obtenir les N meilleures vidéos
-        
-        Args:
-            videos: Liste de vidéos
-            count: Nombre de vidéos à retourner
-            
-        Returns:
-            Liste des meilleures vidéos
-        """
-        filtered = self.filter_videos(videos)
-        return filtered[:count]
-    
+
     def select_best_video_randomly(
         self,
         videos: List[Dict],
@@ -210,45 +196,6 @@ class VideoFilter:
             f"engagement: {selected_video['engagement_rate']:.2%}, "
             f"score: {selected_video['virality_score']:.2f}"
         )
-        
+
         return selected_video
-    
-    def get_top_videos_by_creator(self, videos: List[Dict], count_per_creator: int = 3) -> List[Dict]:
-        """
-        Obtenir les meilleures vidéos par créateur pour assurer la diversité
-        
-        Args:
-            videos: Liste de vidéos
-            count_per_creator: Nombre de vidéos max par créateur
-            
-        Returns:
-            Liste des vidéos diversifiées par créateur
-        """
-        # Filtrer d'abord
-        filtered = self.filter_videos(videos)
-        
-        # Grouper par créateur
-        by_creator = {}
-        for video in filtered:
-            author = video.get('author', 'unknown')
-            if author not in by_creator:
-                by_creator[author] = []
-            by_creator[author].append(video)
-        
-        # Prendre count_per_creator vidéos de chaque créateur
-        result = []
-        for author, author_videos in by_creator.items():
-            # Trier par score pour ce créateur
-            author_videos.sort(key=lambda v: v['virality_score'], reverse=True)
-            result.extend(author_videos[:count_per_creator])
-        
-        # Re-trier globalement par score
-        result.sort(key=lambda v: v['virality_score'], reverse=True)
-        
-        logger.info(
-            f"✓ {len(result)} vidéos sélectionnées de {len(by_creator)} créateurs "
-            f"(max {count_per_creator} par créateur)"
-        )
-        
-        return result
 
